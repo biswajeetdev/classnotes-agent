@@ -1,0 +1,16 @@
+# Copy to cancellations.yaml. Sessions that were scheduled but did not happen.
+#
+# Without this, term-coverage.py cannot tell "I missed that class" from "that class
+# was cancelled", and a report that cries wolf is a report nobody reads.
+#
+# Formats, one per line under `cancelled:`
+#   - 2026-09-02                    whole day: no classes at all
+#   - 2026-09-03 intro-statistics   one course that day
+#   - 2026-09-05 intro-statistics 2000
+#                                   one specific slot (HHMM), when a course runs twice
+#                                   that day and only one was off
+#
+# Anything after `#` is a note and is ignored by the parser.
+
+cancelled:
+  - 2026-09-02                      # public holiday

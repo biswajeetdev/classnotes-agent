@@ -1,0 +1,58 @@
+# ─── NEVER COMMIT: secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*credentials*
+*secret*
+
+# ─── NEVER COMMIT: your actual class material ─────────────────────────────────
+# This repo is the TOOL. Your notes, audio and transcripts are yours and stay local.
+# Deny-by-default: ignore everything at the root, then re-allow only the tool.
+/*
+!/scripts/
+!/docs/
+!/skill/
+!/.gitignore
+!/README.md
+!/LICENSE
+!/CONTRIBUTING.md
+!/courses.example.yaml
+!/.env.example
+!/cancellations.example.yaml
+
+# Belt and braces — these patterns hold even inside allowed directories.
+raw/
+transcripts/
+lectures/
+slides/
+models/
+.live/
+.capture/
+*.mp4
+*.m4a
+*.wav
+*.mp3
+*.jpg
+*.jpeg
+*.png
+*.pdf
+*.bin
+*.vtt
+*.srt
+SYNTHESIS.md
+QUESTIONS.md
+ASSIGNMENTS.md
+LESSONS.md
+courses.yaml
+cancellations.yaml
+*.ics
+
+# ─── Housekeeping ─────────────────────────────────────────────────────────────
+.DS_Store
+__pycache__/
+*.pyc
+*.log
+*.bak
+*.bak-*
+*.disabled-*

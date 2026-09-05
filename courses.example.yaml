@@ -1,0 +1,36 @@
+# Copy to courses.yaml (which is gitignored) and edit for your own programme.
+#
+#   cp courses.example.yaml courses.yaml
+#
+# `slug` is the directory name under $CLASSNOTES_ROOT/ and what /classnotes matches on.
+# Times are 24-HOUR. This matters: an AM/PM misreading once made an 8 PM class
+# invisible to the scheduler for a fortnight.
+
+semester_ends: 2026-11-30
+
+# Base URL of your institution's Moodle, used by fetch-slides.sh.
+# Override at runtime with:  MOODLE_BASE=https://moodle.your.edu/moodle
+moodle_base: https://moodle.example.edu/moodle
+
+courses:
+  - slug: intro-statistics
+    code: STAT-101
+    moodle_id: 821            # the `id=` in your Moodle course URL
+    name: Introduction to Statistics
+    professor: Dr. A. Example
+    sessions: Mon 20:30-21:30 · Sat 15:00-17:00
+    exam: TBD
+    aliases: [stats, 101]
+
+  - slug: microeconomics
+    code: ECON-102
+    moodle_id: 822
+    name: Principles of Microeconomics
+    professor: Prof. B. Example
+    sessions: Tue 20:00-21:30 · Thu 20:00-21:30
+    exam: TBD
+    aliases: [econ, micro, 102]
+
+# WATCH OUT for back-to-back sessions on one day. The capture stops itself after ~15
+# minutes of silence, so two classes with no gap between them will run together and one
+# lecture ends up filed under the other course. Stop the earlier capture manually.
