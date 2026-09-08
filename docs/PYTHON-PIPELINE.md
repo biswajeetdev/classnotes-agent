@@ -11,11 +11,9 @@ back-and-forth. The only thing that leaves your machine is transcript text sent 
 Groq's free tier — everything else, including every safety check in
 [GOTCHAS.md](GOTCHAS.md), is the same deterministic Python either way.
 
-> **A note on how current this document is.** The `classnotes` package is being built
-> in parallel with this doc. Everything below reflects the agreed command contract —
-> what each command does and produces — not a read of finished code. Anywhere the
-> exact detail could plausibly shift when the implementation lands, it's marked
-> **[contract]**. Treat those as "this is the intent," not "this is verified."
+> **Status.** This document was first drafted against the command contract while the
+> `classnotes` package was being built in parallel, then reconciled against the
+> finished implementation. What follows describes shipped code.
 
 ---
 
@@ -59,9 +57,10 @@ brew install whisper-cpp ffmpeg
 whisper-cli --help | grep -- --vad     # confirm VAD support (whisper-cpp >= 1.9)
 ```
 
-**Python.** [contract] — the package targets Python 3.11+; no third-party
-dependencies beyond what a `requirements.txt` in the package root will pin once it
-exists.
+**Python.** 3.10 or newer, declared in `pyproject.toml`. There are **no third-party
+runtime dependencies** — the package is stdlib-only and reaches Groq over `urllib`
+rather than pulling in `requests`. `pip install -e ".[dev]"` adds pytest and ruff,
+for development only.
 
 **Models**, same as [SETUP.md](SETUP.md):
 
@@ -145,10 +144,14 @@ marked; Groq is the only stage that leaves the machine.
    against what's expected for the audio, to catch a transcription that silently
    truncated or produced far less than it should have — the same category of failure
    as `-bs 1`, just caught after the fact instead of by avoiding the flag. This is
-   distinct from `check-coverage.py`'s speech-region comparison (stage-order [contract]
-   — it isn't yet confirmed whether the two checks are merged into one stage or stay
-   separate); either way, both exist to answer "did whisper actually get all of this,"
-   from different angles. On 2026-09-06, a re-passed chunk logging 451 words against an
+   separate from `check-coverage.py`'s speech-region comparison, and deliberately so:
+   `check-coverage.py` needs an `.srt` timeline and falsely reports 100% of speech
+   missing when handed a `.txt`, so the density check never calls it. It works instead
+   from the `.wav`/`.txt` chunk pairs `live-notes.sh` already keeps under
+   `raw/<date>-live/`, picking the *densest* chunk (not a middle one, which can land on
+   a silence break and pass meaninglessly), re-transcribing that one with the language
+   forced, and comparing against its paired `.txt`. Both checks answer "did whisper
+   actually get all of this," from different angles. On 2026-09-06, a re-passed chunk logging 451 words against an
    already-logged 451 correctly cleared what looked like a false alarm — the density
    check agreeing with itself is what avoided a multi-hour recovery pass on audio that
    had transcribed cleanly the first time.
@@ -167,11 +170,13 @@ marked; Groq is the only stage that leaves the machine.
 5. **Note.** Assembles the structured lecture note — the same sections as the
    agent-driven skill (In one line, Key concepts, Formulas, Worked examples, ⚡ Exam
    signals, Open questions, Admin, Transcription notes) — from the digest plus the
-   extracted signals. This is where Groq does the language work of turning extracted
-   material into prose; exactly how much of the note-writing is a Groq call versus
-   template assembly around the deterministic signal extraction is [contract] — not
-   yet confirmed. What's fixed regardless: the ⚡ section is built from
-   `extract-signals.py`'s output, never from the digest.
+   extracted signals. Groq drafts the prose sections (In one line, Key concepts,
+   Formulas, Worked examples, Open questions, Admin). The ⚡ section is **not** drafted
+   by Groq: it is assembled in Python from `extract-signals.py` plus the course's
+   `LESSONS.md` phrase vocabulary, and every assembled line is then asserted present in
+   Groq's output and force-appended verbatim if it was dropped. That makes "the
+   summariser silently drops the highest-value line" structurally impossible rather
+   than merely instructed against.
 
 6. **Verify.** Runs the same checks as `scripts/verify-notes.py` — every figure, quote,
    and proper noun in the note against the full transcript, not the digest. Publishing
