@@ -87,14 +87,11 @@ skips -- deliberately, rather than passing vacuously. When that module is added,
 either it will already match one of the guesses, or the candidate list at the top
 of that file needs one line added; the assertions underneath don't need to change.
 
-`test_density_guard.py` originally guessed at a `classnotes.density`
-function this way too, but partway through writing this suite pybuild's
-in-progress package became visible from this session (a shared-sandbox cwd
-landed inside `~/classnotes-agent`, their separate worktree, while both of
-us were working -- not something to rely on happening again). That let this
-file be rewritten against the real `density.check(live_dir, lang) ->
-DensityResult` API instead of guessing, so it's now a real, precise unit
-test rather than a name-guessing one.
+`test_density_guard.py` was written the same speculative way at first, then
+rewritten against the real `density.check(live_dir, lang) -> DensityResult`
+signature once the implementation existed. It is now a precise unit test rather
+than a name-guessing one -- which is the shape the remaining skipped test should
+take when its module lands.
 
 ## Findings for pybuild (all resolved)
 
