@@ -119,14 +119,16 @@ python3 -m classnotes status
   `scripts/term-coverage.py` as a subprocess rather than reimplementing it, so the
   output is identical to running that script directly.
 
-**`--dry-run`** is supported on `run`, `note` and `synthesis` — the three commands that
-write. It prints what the command would do (which stages would run, which files would be
-written or overwritten) without touching disk or calling Groq. Use it before your first
-`run` on a new course, and any time you're unsure whether a step will re-transcribe
-something expensive by mistake.
+**`--dry-run`** is supported on all five commands. On `run`, `note` and `synthesis` — the
+three that write — it prints what the command would do (which stages would run, which
+files would be written or overwritten) without touching disk or calling Groq. Use it
+before your first `run` on a new course, and any time you're unsure whether a step will
+re-transcribe something expensive by mistake.
 
-`verify` and `status` take no `--dry-run`, deliberately: neither writes anything, so
-there is nothing for a dry run to skip.
+`verify` and `status` never write anything, so there `--dry-run` is a no-op that reports
+what would run rather than running it. It is accepted there for CLI-shape uniformity, so
+a wrapper script can pass the flag to any subcommand without special-casing which ones
+mutate state.
 
 ---
 

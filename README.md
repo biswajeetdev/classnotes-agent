@@ -174,8 +174,10 @@ python3 -m classnotes verify <note.md> <transcript.txt>
 python3 -m classnotes status [--from DATE] [--all]     # term coverage
 ```
 
-`run`, `note` and `synthesis` accept `--dry-run`. `verify` and `status` do not, because
-neither writes anything -- there is nothing for a dry run to skip.
+All five accept `--dry-run`. On `run`, `note` and `synthesis` it prints what would be
+written without touching disk or calling Groq; on `verify` and `status`, which never
+write anything anyway, it simply reports what would run. The flag is accepted
+everywhere so a wrapper script can pass it through without special-casing.
 
 Division of labour, deliberately:
 
