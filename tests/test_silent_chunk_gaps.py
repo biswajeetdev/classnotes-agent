@@ -11,7 +11,6 @@ function isn't part of the published CLI contract, so this tries a couple of
 plausible import paths and skips with a clear message if none match yet.
 """
 import pytest
-
 from conftest import require_classnotes
 
 

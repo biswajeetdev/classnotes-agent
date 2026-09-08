@@ -105,7 +105,7 @@ def _harvest_text(lectures: list[LectureHarvest]) -> str:
             f"One line: {lec.one_line or '(none)'}\n"
             f"Key concepts: {', '.join(lec.concepts) or '(none)'}\n"
             f"Exam signals:\n" + "\n".join(f"  - {s}" for s in lec.signals[:12]) +
-            (f"\nOpen questions:\n" + "\n".join(f"  - {q}" for q in lec.open_questions) if lec.open_questions else "")
+            ("\nOpen questions:\n" + "\n".join(f"  - {q}" for q in lec.open_questions) if lec.open_questions else "")
         )
     return "\n\n".join(parts)
 
@@ -134,7 +134,10 @@ def rebuild(paths, course, *, dry_run: bool = False, model: str | None = None) -
     lectures.sort(key=lambda l: l.date)
 
     if dry_run:
-        return None, warnings + [f"dry-run: would rebuild from {len(lectures)} lecture(s), no Groq call, no file written"]
+        return None, warnings + [
+            f"dry-run: would rebuild from {len(lectures)} lecture(s), "
+            "no Groq call, no file written"
+        ]
 
     harvest_text = _harvest_text(lectures)
     raw = groq_client.chat(SYSTEM_PROMPT, harvest_text, model=model, max_tokens=3000)
@@ -146,7 +149,7 @@ def rebuild(paths, course, *, dry_run: bool = False, model: str | None = None) -
         sections[name] = f"{name}\n{m.group(1).strip()}" if m else f"{name}\n(not generated)"
 
     exam = course.exam or "TBD"
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now().astimezone().date().isoformat()
     header = (f"# {course.name} — Exam Synthesis\n"
               f"*Rebuilt {today} · {len(lectures)} lecture(s) · exam {exam} · "
               f"Prof. {course.professor}*\n\n")

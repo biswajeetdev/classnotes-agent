@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import config, density, groq_client, notewriter, scripts_bridge, synthesis
+from . import config, groq_client, notewriter, scripts_bridge, synthesis
 
 TEAMS_FILENAME_DATE = re.compile(r"-(\d{4})(\d{2})(\d{2})-\d{6}-")
 
@@ -32,7 +32,10 @@ def _resolve_date(input_path: Path | None, explicit: str | None) -> str:
         m = TEAMS_FILENAME_DATE.search(input_path.name)
         if m:
             return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-        return datetime.date.fromtimestamp(input_path.stat().st_mtime).isoformat()
+        mtime = datetime.datetime.fromtimestamp(
+            input_path.stat().st_mtime, tz=datetime.timezone.utc
+        ).astimezone()
+        return mtime.date().isoformat()
     raise SystemExit("error: no date given and no input file to infer it from -- pass --date")
 
 
@@ -172,8 +175,6 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="classnotes")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    common = dict(add_help=False)
-
     p_run = sub.add_parser("run", help="full pipeline: transcribe (if needed) -> note -> synthesis")
     p_run.add_argument("course")
     p_run.add_argument("input", nargs="?", help="media file, if a transcript doesn't already exist")
@@ -182,7 +183,8 @@ def main(argv=None):
     p_run.add_argument("--out-root")
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--force", action="store_true", help="proceed past a density mismatch")
-    p_run.add_argument("--no-groq-signals", action="store_true", help="skip Groq gloss of exam signals; use raw extracted lines")
+    p_run.add_argument("--no-groq-signals", action="store_true",
+                       help="skip Groq gloss of exam signals; use raw extracted lines")
     p_run.add_argument("--regenerate-digest", action="store_true")
     p_run.add_argument("--model")
     p_run.set_defaults(func=cmd_run)

@@ -68,7 +68,7 @@ def load_courses(root: Path) -> list[Course]:
     for blk in txt.split("- slug:")[1:]:
         slug = blk.split("\n")[0].strip()
 
-        def field(name, default=""):
+        def field(name, default="", blk=blk):
             m = re.search(rf"^\s*{name}:\s*(.+)$", blk, re.M)
             return m.group(1).strip() if m else default
 

@@ -13,7 +13,6 @@ whose output word count is dialled in via CLASSNOTES_TEST_WHISPER_WORDS.
 
 Skips cleanly until pybuild's feat/python-pipeline branch lands.
 """
-import pytest
 
 from conftest import require_classnotes
 
