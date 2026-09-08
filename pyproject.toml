@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "classnotes-agent"
+version = "0.1.0"
+description = "Turn a recorded lecture into structured notes and a rolling per-course exam-prep synthesis."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Biswajeet Kumar" }]
+requires-python = ">=3.10"
+# Standard library only — see CONTRIBUTING.md ("no new dependencies without a reason").
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS",
+]
+
+[project.urls]
+Homepage = "https://github.com/biswajeetdev/classnotes-agent"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.6"]
+
+[project.scripts]
+classnotes = "classnotes.__main__:main"
+
+[tool.setuptools]
+packages = ["classnotes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: needs whisper.cpp, ffmpeg, or network access — skipped in CI",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
