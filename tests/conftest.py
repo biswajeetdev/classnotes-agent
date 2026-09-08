@@ -90,6 +90,12 @@ def classnotes_root(tmp_path):
     root = tmp_path / "class-notes"
     root.mkdir()
     (root / "models").mkdir()
+    # transcribe.sh refuses to run if the model file is absent, so it would never
+    # reach the stubbed whisper-cli. These are placeholders -- the stub never
+    # reads them. Without this the whisper-safety tests pass only on a machine
+    # that happens to have the real 1.6 GB model downloaded.
+    (root / "models" / "ggml-large-v3-turbo.bin").write_bytes(b"not a real model")
+    (root / "models" / "ggml-silero-v5.1.2.bin").write_bytes(b"not a real model")
     (root / "courses.yaml").write_text(
         (FIXTURES / "sample_courses.yaml").read_text(encoding="utf-8"), encoding="utf-8"
     )

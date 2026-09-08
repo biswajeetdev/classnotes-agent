@@ -4,7 +4,10 @@
 
 set -euo pipefail
 
-MODEL="${WHISPER_MODEL:-$HOME/class-notes/models/ggml-large-v3-turbo.bin}"
+# Resolve models from the configured root, not a hardcoded $HOME path, so a
+# non-default CLASSNOTES_ROOT (and any test using one) finds them.
+ROOT="${CLASSNOTES_ROOT:-$HOME/class-notes}"
+MODEL="${WHISPER_MODEL:-$ROOT/models/ggml-large-v3-turbo.bin}"
 
 usage() {
   cat <<'USAGE'
@@ -68,7 +71,7 @@ ffmpeg -nostdin -loglevel error -y -i "$INPUT" \
 DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$WAV" 2>/dev/null || echo 0)
 awk -v d="$DUR" 'BEGIN{printf ">> audio ready: %.1f min\n", d/60}'
 
-VAD_MODEL="$HOME/class-notes/models/ggml-silero-v5.1.2.bin"
+VAD_MODEL="${WHISPER_VAD_MODEL:-$ROOT/models/ggml-silero-v5.1.2.bin}"
 # Silero VAD: whisper invents speech in silence -- 36 fabricated "Any doubt in this
 # notebook?" lines in one 5-min chunk on 5 Sep. Measured on that chunk: 36 hallucinations
 # -> 0, real words 466 -> 515 (it also RECOVERED speech), "bulk constructor" -> the correct
