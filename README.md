@@ -130,6 +130,24 @@ verifies it against the transcript, and rebuilds `SYNTHESIS.md`.
 
 ---
 
+## Two ways to run this
+
+The steps above are driven by an agent (Claude Code, via `/classnotes`) that does the
+judgement work — ranking exam signals, handling code-switched Hindi/English, deciding
+what a note can lose without losing an idea. That's still the default.
+
+There's also a **pure-Python mode**: one command, no agent session, the same
+transcription and safety checks, with Groq's free tier standing in for the language
+work an agent would otherwise do.
+
+```bash
+python3 -m classnotes run <course-slug> lecture.mp4
+```
+
+It's the faster path for a routine lecture. It is not a like-for-like substitute for
+the judgement above — see [`docs/PYTHON-PIPELINE.md`](docs/PYTHON-PIPELINE.md) for
+what it does, and where it's honestly weaker than having an agent in the loop.
+
 ## Script reference
 
 | Script | Does |
