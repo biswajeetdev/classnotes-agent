@@ -62,7 +62,3 @@ __pycache__/
 *.bak
 *.bak-*
 *.disabled-*
-
-# one synthetic *.srt fixture, not real user data -- must come after the
-# belt-and-braces *.srt rule above so the exception actually wins
-!/tests/fixtures/sample_transcript.srt

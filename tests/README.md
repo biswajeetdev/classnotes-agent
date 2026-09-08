@@ -34,16 +34,26 @@ Because tests/ and classnotes/ are being built in parallel on separate
 branches, that's the expected state in this worktree today; the suite
 becomes meaningful the moment the branches merge.
 
-**Assumption flagged, not confirmed by pybuild at write time:** root override
-via a `CLASSNOTES_ROOT` environment variable, and that whisper-cli/ffmpeg are
-invoked as subprocess calls to binaries found on `PATH` (matching
-`scripts/transcribe.sh`'s existing contract). If pybuild used a different
-mechanism, update `run_cli()` / `fake_bin` in `conftest.py` -- the assertions
-themselves shouldn't need to change.
+**Confirmed directly with pybuild:** root override is the `CLASSNOTES_ROOT`
+environment variable (affects both reads and writes -- `config.default_root()`).
+A separate `--out-root` flag on `run`/`note`/`synthesis` redirects writes only
+while still reading the real root; that's for testing generation quality
+against real transcripts, not what this suite uses. `whisper-cli` is invoked
+directly by name via `subprocess.run` in `classnotes/density.py`; full
+transcription goes through `scripts_bridge.transcribe()`, which shells out to
+`scripts/transcribe.sh` (one level removed -- that script calls
+`ffmpeg`/`whisper-cli` itself). `fake_bin` in `conftest.py` stubs both paths
+on `PATH`, which works for either.
+
+`--dry-run` is confirmed to intentionally exist only on the three writing
+commands (`run`/`note`/`synthesis`) -- `verify` and `status` are already
+non-mutating and don't have it by design, not by omission. (An earlier
+version of this README and `test_cli_contract.py` flagged `verify` lacking
+`--dry-run` as a bug; that's retracted -- see the numbered findings below.)
 
 | File | Defends |
 |---|---|
-| `test_cli_contract.py` | All five subcommands exist, run without a traceback, and `--dry-run` performs no writes. |
+| `test_cli_contract.py` | All five subcommands exist and run without a traceback; `--dry-run` on `run`/`note`/`synthesis` performs no writes; `verify` runs plainly with no flag needed. |
 | `test_whisper_safety.py` | Never `-bs 1` (silent total failure: rc=0, no transcript). Never `-tr`/`--translate`. Language defaults to `auto`. |
 | `test_transcript_reuse.py` | An existing `transcripts/<date>.txt` is reused, never re-transcribed or overwritten. |
 | `test_density_guard.py` | Re-passed-chunk word count vs. capture-log word count: match proceeds, mismatch flags loudly and blocks writing a note (measured case: 451 vs 451 cleared a false alarm on 2026-09-06). |
@@ -86,8 +96,8 @@ test rather than a name-guessing one.
 ## Findings for pybuild
 
 Reading the real (in-progress) package while writing these tests turned up
-three things worth a look, none of which block this suite (each is either
-worked around or documented as an expected failure above):
+two things still worth a look (a third, initially reported, turned out to
+be intentional design -- see below), plus one pybuild already fixed:
 
 1. **`status` doesn't honour `CLASSNOTES_ROOT`.** `cmd_status` shells out to
    `scripts/term-coverage.py` via `scripts_bridge.term_coverage(root, args)`,
@@ -103,14 +113,7 @@ worked around or documented as an expected failure above):
    `--root` (would need adding to term-coverage.py's argparse) instead of
    relying on `cwd`.
 
-2. **`verify` doesn't accept `--dry-run`.** The task's contract says "All
-   commands support `--dry-run`", but `__main__.py`'s `p_ver` parser has no
-   `--dry-run` argument, so passing it is rejected as unrecognized.
-   `test_cli_contract.py::test_verify_supports_dry_run_flag` fails on this
-   today, honestly -- `verify` is read-only by nature, so accepting and
-   no-op'ing the flag would satisfy the contract with a one-line addition.
-
-3. **`config.resolve_course()`'s alias match returns the first hit, not a
+2. **`config.resolve_course()`'s alias match returns the first hit, not a
    unique one.** The slug-substring fallback explicitly requires
    `len(substr) == 1` before returning (never guess silently), but the
    earlier alias/code-match loop just returns on the first course whose
@@ -120,3 +123,17 @@ worked around or documented as an expected failure above):
    `test_course_resolution.py::test_ambiguous_alias_does_not_silently_pick_one`
    fails on this today; the fix is likely making that loop collect all
    matches and require exactly one, same as the substring fallback below it.
+
+**Retracted:** `verify` lacking `--dry-run` was initially flagged as
+contradicting the "all commands support --dry-run" contract line. Confirmed
+with pybuild: intentional -- `verify` and `status` are already non-mutating
+and were never meant to have it. `test_cli_contract.py` now tests `verify`
+runs plainly instead.
+
+**Already fixed by pybuild:** `classnotes/density.py` had
+`~/class-notes/models/...` hardcoded as module-level constants, ignoring
+`CLASSNOTES_ROOT` -- inconsistent with every other module. Fixed in their
+commit `0043bf4`; model paths now resolve from `config.default_root()` at
+call time, with `WHISPER_MODEL`/`WHISPER_VAD_MODEL` still overriding
+explicitly (which is what `test_density_guard.py` sets, so it's unaffected
+either way).

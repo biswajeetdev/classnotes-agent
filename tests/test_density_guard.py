@@ -81,3 +81,27 @@ def test_no_live_capture_is_unverifiable_not_silently_ok(tmp_path):
 
     result = density.check(tmp_path / "raw" / "does-not-exist-live", "auto")
     assert result.status == "unverifiable"
+
+
+def test_model_path_resolves_under_classnotes_root_not_real_home(tmp_path, monkeypatch):
+    """pybuild fixed classnotes/density.py (commit 0043bf4) to resolve
+    whisper model paths from config.default_root() at call time instead of a
+    hardcoded ~/class-notes/models/... -- confirm it: with CLASSNOTES_ROOT
+    pointed at an empty tmp dir and no WHISPER_MODEL override, the "model
+    missing" path reported must be under CLASSNOTES_ROOT, never under the
+    real ~/class-notes/models/."""
+    require_classnotes()
+    from classnotes import density
+
+    monkeypatch.delenv("WHISPER_MODEL", raising=False)
+    monkeypatch.delenv("WHISPER_VAD_MODEL", raising=False)
+    monkeypatch.setenv("CLASSNOTES_ROOT", str(tmp_path))
+
+    live_dir = tmp_path / "raw" / "2026-09-06-live"
+    _make_live_chunk(live_dir, original_words=25)
+
+    result = density.check(live_dir, "en")
+
+    assert result.status == "unverifiable"
+    assert str(tmp_path) in result.detail
+    assert "class-notes/models" not in result.detail.replace(str(tmp_path), "")
