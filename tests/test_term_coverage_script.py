@@ -32,11 +32,14 @@ def test_load_courses_parses_slugs_and_sessions(monkeypatch, tmp_path):
     tc = _tc(monkeypatch, tmp_path)
     courses = dict(tc.load_courses())
     assert set(courses) == {"intro-statistics", "microeconomics"}
-    # "Mon 20:30-21:30 · Sat 15:00-17:00" -> two (day, HHMM) sessions
-    assert ("Mon", "2030") in courses["intro-statistics"]
-    assert ("Sat", "1500") in courses["intro-statistics"]
-    assert ("Tue", "2000") in courses["microeconomics"]
-    assert ("Thu", "2000") in courses["microeconomics"]
+    # "Mon 20:30-21:30 · Sat 15:00-17:00" -> two (day, start, end) sessions.
+    # The END time is load-bearing, not decoration: term-coverage.py only treats a
+    # slot as assessable once `now >= end`, which is what stops a class scheduled
+    # later today -- or one still in progress -- from being reported as missed.
+    assert ("Mon", "2030", "2130") in courses["intro-statistics"]
+    assert ("Sat", "1500", "1700") in courses["intro-statistics"]
+    assert ("Tue", "2000", "2130") in courses["microeconomics"]
+    assert ("Thu", "2000", "2130") in courses["microeconomics"]
 
 
 def test_cancellations_whole_day(monkeypatch, tmp_path):
