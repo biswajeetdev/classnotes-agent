@@ -26,6 +26,11 @@
 !/pyproject.toml
 !/.github/
 
+# tests/ owns its own venv and caches
+tests/.venv/
+tests/**/__pycache__/
+tests/.pytest_cache/
+
 # Belt and braces — these patterns hold even inside allowed directories.
 raw/
 transcripts/
@@ -67,3 +72,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 .testout/
+
+# one synthetic *.srt fixture, not real user data -- must come after the
+# belt-and-braces *.srt rule above so the exception actually wins
+!/tests/fixtures/sample_transcript.srt
