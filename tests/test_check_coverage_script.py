@@ -10,7 +10,7 @@ from conftest import FIXTURES, import_script
 
 def test_srt_regions_parses_timestamps_correctly():
     cc = import_script("check-coverage.py")
-    regions = cc.srt_regions(str(FIXTURES / "sample_transcript.srt"))
+    regions = cc.srt_regions(str(FIXTURES / "sample_transcript_srt.txt"))
     assert regions == [(0.0, 5.5), (10.0, 20.25)]
 
 

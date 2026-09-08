@@ -7,7 +7,10 @@ surface. Skips cleanly until pybuild's feat/python-pipeline branch lands.
     python3 -m classnotes verify <note.md> <transcript.txt>
     python3 -m classnotes status
 
-All commands support --dry-run.
+All commands support --dry-run -- clarified by pybuild: this means the
+writing commands (run/note/synthesis). verify and status are already
+non-mutating, so they were never given the flag by design, not by omission
+-- see tests/README.md.
 
 NOTE on `status`: as implemented, `cmd_status` shells out to
 scripts/term-coverage.py, whose ROOT is hardcoded to
@@ -64,17 +67,12 @@ def test_synthesis_supports_dry_run_flag(classnotes_root, monkeypatch):
     assert "Traceback" not in result.stderr
 
 
-def test_verify_supports_dry_run_flag(classnotes_root, monkeypatch):
-    """The task contract states 'All commands support --dry-run'. verify is
-    read-only by nature (it never writes), so accepting and no-op'ing the
-    flag is the expected behaviour -- it must not be rejected as an unknown
-    argument."""
-    monkeypatch.setenv("CLASSNOTES_ROOT", str(classnotes_root))
+def test_verify_runs_without_dry_run():
+    """verify is read-only by nature and intentionally has no --dry-run flag
+    (confirmed with pybuild -- see tests/README.md). It should just work
+    plainly, with no flag needed."""
     result = run_cli(
         "verify", str(FIXTURES / "sample_note_clean.md"),
-        str(FIXTURES / "sample_transcript.txt"), "--dry-run",
-    )
-    assert "unrecognized arguments" not in result.stderr, (
-        "verify does not accept --dry-run, contradicting the published contract"
+        str(FIXTURES / "sample_transcript.txt"),
     )
     assert "Traceback" not in result.stderr
