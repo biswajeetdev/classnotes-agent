@@ -48,15 +48,15 @@ transcription goes through `scripts_bridge.transcribe()`, which shells out to
 `ffmpeg`/`whisper-cli` itself). `fake_bin` in `conftest.py` stubs both paths
 on `PATH`, which works for either.
 
-`--dry-run` is confirmed to intentionally exist only on the three writing
-commands (`run`/`note`/`synthesis`) -- `verify` and `status` are already
-non-mutating and don't have it by design, not by omission. (An earlier
-version of this README and `test_cli_contract.py` flagged `verify` lacking
-`--dry-run` as a bug; that's retracted -- see the numbered findings below.)
+All five commands accept `--dry-run` as of pybuild's commit `5f5b854`:
+`verify` and `status` are read-only by nature, so theirs is an accepted
+no-op ("dry-run: would verify ...") for CLI-shape uniformity, added after
+this suite initially (wrongly) flagged `verify` lacking it as a contract
+violation -- see the findings below for the full back-and-forth.
 
 | File | Defends |
 |---|---|
-| `test_cli_contract.py` | All five subcommands exist and run without a traceback; `--dry-run` on `run`/`note`/`synthesis` performs no writes; `verify` runs plainly with no flag needed. |
+| `test_cli_contract.py` | All five subcommands exist and run without a traceback; `--dry-run` is accepted by all five (a real skip for the three writing commands, an accepted no-op for `verify`/`status`); `status` reports on the configured root, not real user data. |
 | `test_whisper_safety.py` | Never `-bs 1` (silent total failure: rc=0, no transcript). Never `-tr`/`--translate`. Language defaults to `auto`. |
 | `test_transcript_reuse.py` | An existing `transcripts/<date>.txt` is reused, never re-transcribed or overwritten. |
 | `test_density_guard.py` | Re-passed-chunk word count vs. capture-log word count: match proceeds, mismatch flags loudly and blocks writing a note (measured case: 451 vs 451 cleared a false alarm on 2026-09-06). |
@@ -66,7 +66,7 @@ version of this README and `test_cli_contract.py` flagged `verify` lacking
 | `test_root_safety.py` | Never writes outside the configured root; never deletes anything under `raw/` or `transcripts/`. |
 | `test_silent_chunk_gaps.py` | A numbering gap from deleted silent chunks (below ~-45 dB) is explained, not reported as loss/corruption. |
 | `test_course_resolution.py` | Slug, alias, and unresolvable-course handling -- never silently guesses; an ambiguous alias must not resolve to either match. |
-| `test_cancellations_contract.py` | Pipeline-level version of gotcha 11 -- a cancelled session is never silently captured and counted as normal. |
+| `test_cancellations_contract.py` | Pipeline-level version of gotcha 11 -- a cancelled session is never silently captured by `run`, and `status --all` reports it as cancelled rather than a missing session ("a report that cries wolf is a report nobody reads"). |
 
 ## Running
 
@@ -96,36 +96,47 @@ file be rewritten against the real `density.check(live_dir, lang) ->
 DensityResult` API instead of guessing, so it's now a real, precise unit
 test rather than a name-guessing one.
 
-## Findings from writing these tests
+## Findings for pybuild (all resolved)
 
-Writing the suite against the real package surfaced three issues. **All three are
-now fixed** -- this section is kept as a record of what the tests caught, not as an
-open to-do list. Each has a regression test guarding it.
+Reading the real (in-progress) package while writing these tests turned up
+three things, all now fixed on `feat/python-pipeline`:
 
-1. **`status` did not honour `CLASSNOTES_ROOT`.** `term-coverage.py` hardcoded
-   `ROOT = os.path.expanduser("~/class-notes")` at import time, so
-   `python3 -m classnotes status` read the *real* course tree no matter what
-   `CLASSNOTES_ROOT` said. That made the command untestable without touching real
-   user data, so this suite originally refused to invoke it via the CLI at all.
-   Fixed in both places: `term-coverage.py` now reads the env var itself, and
-   `scripts_bridge.term_coverage()` threads it through explicitly rather than
-   relying on ambient inheritance.
+1. **`status` didn't honour `CLASSNOTES_ROOT`.** `cmd_status` shelled out to
+   `scripts/term-coverage.py` via `scripts_bridge.term_coverage(root, args)`,
+   setting only the subprocess's `cwd` -- but `term-coverage.py`'s `ROOT` was
+   `os.path.expanduser("~/class-notes")`, hardcoded at import time, and never
+   read `cwd`. So `python3 -m classnotes status` always read the *real*
+   `~/class-notes/courses.yaml` regardless of `CLASSNOTES_ROOT`. **Fixed in
+   commit `5f5b854`:** `term-coverage.py`'s `ROOT` now reads `CLASSNOTES_ROOT`
+   directly, and `scripts_bridge.term_coverage()` sets that env var explicitly
+   from the `root` it's given rather than relying on `cwd`.
+   `test_cli_contract.py::test_status_reads_the_configured_root_not_real_data`
+   and `test_cancellations_contract.py::test_status_reports_a_cancellation_not_a_gap`
+   now exercise `status` via the CLI directly, safely, against
+   `CLASSNOTES_ROOT`.
 
-2. **`config.resolve_course()` picked the first matching alias, not a unique one.**
-   The slug-substring fallback already required exactly one match before returning
-   -- never guess silently -- but the alias/code loop above it returned on the first
-   hit, so two courses sharing an alias would silently resolve to whichever appeared
-   first in `courses.yaml`. That is the failure mode SKILL.md warns about most
-   sharply: a note filed under the wrong course corrupts that course's synthesis.
-   Now requires uniqueness and raises `ConfigError` listing every match.
-   Guarded by `test_course_resolution.py::test_ambiguous_alias_does_not_silently_pick_one`.
+2. **`config.resolve_course()`'s alias match returned the first hit, not a
+   unique one.** The slug-substring fallback explicitly required
+   `len(substr) == 1` before returning (never guess silently), but the
+   earlier alias/code-match loop just returned on the first course whose
+   aliases contained the needle. **Fixed in commit `5f5b854`,** same pattern
+   as the substring fallback: collect every alias/code match, raise
+   `ConfigError` naming all of them if more than one, only auto-resolve if
+   exactly one.
+   `test_course_resolution.py::test_ambiguous_alias_does_not_silently_pick_one`
+   now also checks the specific error message.
 
-3. **`density.py` hardcoded the whisper model path** to `~/class-notes/models/...`,
-   ignoring `CLASSNOTES_ROOT` like every other module honoured it. Found while
-   answering a question about the sandbox mechanism, fixed and re-verified against
-   real live-capture chunks (466 vs 466, unchanged result).
+3. **`verify` had no `--dry-run`,** which an earlier version of this README
+   flagged as contradicting "all commands support --dry-run." pybuild
+   initially clarified this was intentional (verify/status are already
+   non-mutating), then added it anyway as an accepted no-op for CLI-shape
+   uniformity -- **commit `5f5b854`.** `test_cli_contract.py` now checks both
+   the plain and `--dry-run` forms of `verify`.
 
-One test remains skipped by design: the chunk-numbering-gap explainer (gotcha 9)
-has no module yet. It skips with a message naming the candidate import paths to try
-once that lands, rather than passing vacuously.
-
+**Also fixed along the way (commit `0043bf4`, before the above):**
+`classnotes/density.py` had `~/class-notes/models/...` hardcoded as
+module-level constants, ignoring `CLASSNOTES_ROOT` -- inconsistent with
+every other module. Model paths now resolve from `config.default_root()` at call
+time, with `WHISPER_MODEL`/`WHISPER_VAD_MODEL` still overriding explicitly.
+`test_density_guard.py::test_model_path_resolves_under_classnotes_root_not_real_home`
+covers this directly.
