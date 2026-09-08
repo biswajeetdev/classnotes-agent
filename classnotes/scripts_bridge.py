@@ -9,6 +9,7 @@ decoupled from their internals and lets each keep its own CLI contract.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -31,9 +32,7 @@ def transcribe(input_media: Path, outbase: Path, lang: str = "auto", force: bool
     Raises ScriptError with transcribe.sh's stderr on failure (e.g. missing
     ffmpeg/whisper-cli, or an existing transcript refusing to be clobbered).
     """
-    env = None
     cmd = [str(SCRIPTS_DIR / "transcribe.sh"), str(input_media), str(outbase), lang]
-    import os
     env = os.environ.copy()
     if force:
         env["FORCE"] = "1"
@@ -71,6 +70,16 @@ def verify_note(note: Path, transcript: Path) -> tuple[bool, str]:
 
 
 def term_coverage(root: Path, args: list[str]) -> tuple[int, str]:
-    """Runs scripts/term-coverage.py. Returns (exit_code, output)."""
-    r = _run(["python3", str(SCRIPTS_DIR / "term-coverage.py"), *args], cwd=str(root))
+    """Runs scripts/term-coverage.py. Returns (exit_code, output).
+
+    term-coverage.py reads its own ROOT from the CLASSNOTES_ROOT env var (not
+    cwd -- it never looked at cwd, so passing cwd=root here used to be a no-op
+    that looked like it worked). Set the env var explicitly from `root` rather
+    than relying on it already being set in the ambient environment, so this
+    always matches whatever Paths/config resolved root to.
+    """
+    env = os.environ.copy()
+    env["CLASSNOTES_ROOT"] = str(root)
+    r = subprocess.run(["python3", str(SCRIPTS_DIR / "term-coverage.py"), *args],
+                        capture_output=True, text=True, env=env)
     return r.returncode, r.stdout + r.stderr

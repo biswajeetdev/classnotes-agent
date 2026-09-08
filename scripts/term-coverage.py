@@ -18,7 +18,7 @@ Exit status: 0 when nothing is missing, 2 when something is.
 import argparse, datetime, glob, os, re, sys
 from zoneinfo import ZoneInfo
 
-ROOT = os.path.expanduser("~/class-notes")
+ROOT = os.environ.get("CLASSNOTES_ROOT", os.path.expanduser("~/class-notes"))
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # courses.yaml's header states all times are IST. Compare against IST explicitly
