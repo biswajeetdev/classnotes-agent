@@ -29,9 +29,20 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-MODEL = Path(os.environ.get("WHISPER_MODEL", "~/class-notes/models/ggml-large-v3-turbo.bin")).expanduser()
-VAD_MODEL = Path("~/class-notes/models/ggml-silero-v5.1.2.bin").expanduser()
+from . import config
+
 MIN_CHUNK_WORDS = 20  # skip near-silent chunks -- picking one tells you nothing
+
+
+def _model_paths() -> tuple[Path, Path]:
+    """Resolved at call time (not import time) and relative to the configured
+    root (CLASSNOTES_ROOT), not a hardcoded ~/class-notes -- so a sandboxed
+    test root is actually honoured. WHISPER_MODEL/WHISPER_VAD_MODEL still
+    override explicitly, matching transcribe.sh's own convention."""
+    root = config.default_root()
+    model = Path(os.environ.get("WHISPER_MODEL", str(root / "models" / "ggml-large-v3-turbo.bin"))).expanduser()
+    vad = Path(os.environ.get("WHISPER_VAD_MODEL", str(root / "models" / "ggml-silero-v5.1.2.bin"))).expanduser()
+    return model, vad
 
 
 @dataclasses.dataclass
@@ -66,15 +77,16 @@ def _dense_chunk(live_dir: Path) -> tuple[Path, Path, int] | None:
 
 
 def _whisper_transcribe_wav(wav: Path, lang: str, outbase: Path) -> Path:
-    if not MODEL.exists():
-        raise RuntimeError(f"whisper model missing: {MODEL}")
+    model, vad_model = _model_paths()
+    if not model.exists():
+        raise RuntimeError(f"whisper model missing: {model}")
     if not shutil.which("whisper-cli"):
         raise RuntimeError("whisper-cli not installed")
     vad_args = []
-    if VAD_MODEL.exists():
-        vad_args = ["--vad", "--vad-model", str(VAD_MODEL), "--suppress-nst"]
+    if vad_model.exists():
+        vad_args = ["--vad", "--vad-model", str(vad_model), "--suppress-nst"]
     threads = str(os.environ.get("WHISPER_THREADS") or (os.cpu_count() or 4))
-    cmd = ["whisper-cli", *vad_args, "-m", str(MODEL), "-f", str(wav), "-l", lang,
+    cmd = ["whisper-cli", *vad_args, "-m", str(model), "-f", str(wav), "-l", lang,
            "-t", threads, "-otxt", "-of", str(outbase), "-pp"]
     r = subprocess.run(cmd, capture_output=True, text=True)
     out = outbase.with_suffix(".txt")
