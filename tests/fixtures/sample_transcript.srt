@@ -1,0 +1,8 @@
+1
+00:00:00,000 --> 00:00:05,500
+Today we will talk about cross validation.
+
+2
+00:00:10,000 --> 00:00:20,250
+This is important, it will come in the exam.
+

@@ -1,0 +1,11 @@
+Today we will talk about cross validation and overfitting.
+Now I am going to write a comment.
+Now I am going to write a comment.
+Now I am going to write a comment.
+This is important, it will come in the exam.
+We can change the model, but we cannot change the data.
+The dataset has 451 rows after cleaning.
+A student asked about k folds and the professor answered five is typical.
+Remember this for the assignment due next week.
+Okay.
+Thank you.

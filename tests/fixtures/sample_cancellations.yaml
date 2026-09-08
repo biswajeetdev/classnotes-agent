@@ -1,0 +1,6 @@
+# Test fixture -- exercises all three cancellation forms plus a comment-only line.
+cancelled:
+  - 2026-09-02                                # whole day: public holiday
+  - 2026-09-03 intro-statistics                # one course that day
+  - 2026-09-05 intro-statistics 2000           # one specific slot (course runs twice)
+  # 2026-09-06 this whole line is a comment and must be ignored

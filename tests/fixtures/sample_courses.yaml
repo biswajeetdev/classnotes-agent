@@ -1,0 +1,23 @@
+# Test fixture -- mirrors the shape of courses.example.yaml. Never the user's
+# real courses.yaml (that file is gitignored and must never be read by tests).
+semester_ends: 2026-11-30
+moodle_base: https://moodle.example.edu/moodle
+
+courses:
+  - slug: intro-statistics
+    code: STAT-101
+    moodle_id: 821
+    name: Introduction to Statistics
+    professor: Dr. A. Example
+    sessions: Mon 20:30-21:30 · Sat 15:00-17:00
+    exam: TBD
+    aliases: [stats, 101]
+
+  - slug: microeconomics
+    code: ECON-102
+    moodle_id: 822
+    name: Principles of Microeconomics
+    professor: Prof. B. Example
+    sessions: Tue 20:00-21:30 · Thu 20:00-21:30
+    exam: TBD
+    aliases: [econ, micro, 102]
