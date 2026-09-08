@@ -142,6 +142,12 @@ def cmd_synthesis(args):
 
 
 def cmd_verify(args):
+    # verify never writes anything -- it only reads and reports. --dry-run is
+    # accepted for CLI-shape uniformity with run/note/synthesis and just skips
+    # invoking verify-notes.py, rather than silently ignoring the flag.
+    if args.dry_run:
+        print(f"dry-run: would verify {args.note} against {args.transcript}")
+        return
     clean, out = scripts_bridge.verify_note(Path(args.note), Path(args.transcript))
     print(out)
     sys.exit(0 if clean else 1)
@@ -149,6 +155,9 @@ def cmd_verify(args):
 
 def cmd_status(args):
     root = config.default_root()
+    if args.dry_run:
+        print(f"dry-run: would report term coverage under {root}")
+        return
     extra = []
     if args.since:
         extra += ["--from", args.since]
@@ -198,11 +207,13 @@ def main(argv=None):
     p_ver = sub.add_parser("verify", help="check a note against its transcript")
     p_ver.add_argument("note")
     p_ver.add_argument("transcript")
+    p_ver.add_argument("--dry-run", action="store_true", help="verify is read-only already; just skip running it")
     p_ver.set_defaults(func=cmd_verify)
 
     p_stat = sub.add_parser("status", help="term coverage -- what's unprocessed")
     p_stat.add_argument("--from", dest="since")
     p_stat.add_argument("--all", action="store_true")
+    p_stat.add_argument("--dry-run", action="store_true", help="status is read-only already; just skip running it")
     p_stat.set_defaults(func=cmd_status)
 
     args = ap.parse_args(argv)

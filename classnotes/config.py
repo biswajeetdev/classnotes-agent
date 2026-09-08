@@ -93,9 +93,16 @@ def resolve_course(root: Path, needle: str) -> Course:
     for c in courses:
         if c.slug.lower() == needle_l:
             return c
-    for c in courses:
-        if needle_l in [a.lower() for a in c.aliases] or needle_l == c.code.lower():
-            return c
+    # alias/code match -- same rule as the substring fallback below: only resolve
+    # if exactly one course matches. Two courses sharing an alias used to
+    # silently resolve to whichever was listed first in courses.yaml.
+    alias_hits = [c for c in courses
+                  if needle_l in [a.lower() for a in c.aliases] or needle_l == c.code.lower()]
+    if len(alias_hits) == 1:
+        return alias_hits[0]
+    if len(alias_hits) > 1:
+        names = ", ".join(c.slug for c in alias_hits)
+        raise ConfigError(f"'{needle}' matches more than one course by alias/code: {names}")
     # substring fallback on slug, but only if exactly one match -- never guess silently
     substr = [c for c in courses if needle_l in c.slug.lower()]
     if len(substr) == 1:
