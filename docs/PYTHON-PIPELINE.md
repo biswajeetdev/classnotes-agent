@@ -115,16 +115,19 @@ python3 -m classnotes status
   the kept lecture notes, never appended.
 - `verify` is the standalone checker — the Python-pipeline equivalent of
   `scripts/verify-notes.py` — for re-checking a note you edited by hand.
-- `status` is [contract] — read as "what's the current state per course": which
-  lectures have transcripts, notes, and an up-to-date synthesis. Closest existing
-  equivalent is `scripts/term-coverage.py`, which this likely wraps or replaces; not
-  yet confirmed which.
+- `status` reports term coverage per course: which scheduled sessions have a
+  transcript and which do not, with a captured/held summary. It **wraps**
+  `scripts/term-coverage.py` as a subprocess rather than reimplementing it, so the
+  output is identical to running that script directly.
 
-**`--dry-run`** is supported on all of the above [contract]: it should print what the
-command would do — which stages would run, which files would be written or
-overwritten — without touching disk or calling Groq. Use it before your first `run` on
-a new course, and any time you're unsure whether a step will re-transcribe something
-expensive by mistake.
+**`--dry-run`** is supported on `run`, `note` and `synthesis` — the three commands that
+write. It prints what the command would do (which stages would run, which files would be
+written or overwritten) without touching disk or calling Groq. Use it before your first
+`run` on a new course, and any time you're unsure whether a step will re-transcribe
+something expensive by mistake.
+
+`verify` and `status` take no `--dry-run`, deliberately: neither writes anything, so
+there is nothing for a dry run to skip.
 
 ---
 

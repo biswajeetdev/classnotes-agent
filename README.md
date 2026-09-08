@@ -91,8 +91,26 @@ cp .env.example "$CLASSNOTES_ROOT/.env"
 chmod 600 "$CLASSNOTES_ROOT/.env"      # then paste your key
 ```
 
-To use it as a Claude Code skill, copy `skill/SKILL.md` to
-`~/.claude/skills/classnotes/SKILL.md` and invoke it with `/classnotes`.
+Then pick how you want to run it -- see [Two ways to run this](#two-ways-to-run-this).
+
+**As a Claude Code skill**, copy the skill into your skills directory and invoke it with
+`/classnotes`:
+
+```bash
+mkdir -p ~/.claude/skills/classnotes
+cp skill/SKILL.md ~/.claude/skills/classnotes/SKILL.md
+```
+
+**As a Python package**, install it from the checkout (Python 3.10+, no third-party
+runtime dependencies):
+
+```bash
+pip install -e .                 # adds the `classnotes` command
+python3 -m classnotes status     # check it works
+```
+
+Both read and write the same `$CLASSNOTES_ROOT` tree, so installing one does not commit
+you to it -- you can run either on any given lecture.
 
 ---
 
