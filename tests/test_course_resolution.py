@@ -48,16 +48,13 @@ def test_unresolvable_course_fails_rather_than_guessing(classnotes_root, monkeyp
 
 def test_ambiguous_alias_does_not_silently_pick_one(classnotes_root, monkeypatch):
     """Give both fixture courses the alias 'stats' and require that resolving
-    it either fails or otherwise does not silently commit to one of the two
-    -- filing a note under the wrong course corrupts that course's synthesis.
+    it fails rather than silently committing to one of the two -- filing a
+    note under the wrong course corrupts that course's synthesis.
 
-    NOTE: as implemented, config.resolve_course()'s alias-matching loop
-    returns the FIRST course whose aliases contain the needle -- it does not
-    check for a second match the way the slug-substring fallback does (that
-    one explicitly requires `len(substr) == 1`). So this genuinely fails
-    today; it documents the same 'never guess silently' principle SKILL.md
-    states for course resolution, extended to the alias case. Flagged to
-    pybuild -- see tests/README.md.
+    Fixed in pybuild's commit 5f5b854: config.resolve_course()'s alias-match
+    now collects every hit and raises ConfigError listing all of them when
+    there's more than one, the same rule the slug-substring fallback already
+    used (len(matches) == 1 required).
     """
     monkeypatch.setenv("CLASSNOTES_ROOT", str(classnotes_root))
     courses_yaml = classnotes_root / "courses.yaml"
@@ -75,3 +72,6 @@ def test_ambiguous_alias_does_not_silently_pick_one(classnotes_root, monkeypatch
     assert result.returncode != 0, (
         "an alias matching two courses must not be silently resolved to either one"
     )
+    combined = (result.stdout + result.stderr).lower()
+    assert "more than one course" in combined
+    assert "intro-statistics" in combined and "microeconomics" in combined
