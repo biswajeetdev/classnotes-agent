@@ -13,6 +13,8 @@
 !/scripts/
 !/docs/
 !/skill/
+!/classnotes/
+!/tests/
 !/.gitignore
 !/README.md
 !/LICENSE
@@ -20,6 +22,8 @@
 !/courses.example.yaml
 !/.env.example
 !/cancellations.example.yaml
+!/pyproject.toml
+!/.github/
 
 # Belt and braces — these patterns hold even inside allowed directories.
 raw/
@@ -56,3 +60,8 @@ __pycache__/
 *.bak
 *.bak-*
 *.disabled-*
+
+# Python packaging
+*.egg-info/
+.pytest_cache/
+.venv/
