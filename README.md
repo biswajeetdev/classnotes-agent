@@ -130,12 +130,23 @@ verifies it against the transcript, and rebuilds `SYNTHESIS.md`.
 
 ---
 
-## Python pipeline (no agent)
+## Two ways to run this
 
-The workflow above needs Claude Code sitting in the loop to write the note and rebuild
-the synthesis. `classnotes/` is a standalone Python package that runs the same workflow
-end to end from one command, with no agent -- the only AI dependency is **Groq** (the
-same API `digest.py` already uses).
+Everything above is the **agent workflow**: Claude Code drives it via the `/classnotes`
+skill in [`skill/`](skill/), and does the judgement work -- ranking exam signals, handling
+code-switched Hindi/English, deciding what a note can lose without losing an idea.
+
+There is also a **pure-Python pipeline** in [`classnotes/`](classnotes/): one command, no
+agent session, the same transcription and safety checks, with Groq's free tier standing in
+for the language work. Pick whichever suits you; they read and write the same course tree,
+so you can move between them lecture by lecture.
+
+| | Agent skill | Python pipeline |
+|---|---|---|
+| Install | copy `skill/SKILL.md` into your agent's skills dir | `pip install -e .` |
+| Invoke | `/classnotes` in Claude Code | `python3 -m classnotes run <course>` |
+| Needs | a Claude Code session | Python 3.10+, a free Groq key |
+| Judgement | full | approximated by Groq |
 
 ```bash
 python3 -m classnotes run <course-slug> [<input.mp4> | --date YYYY-MM-DD]  # full pipeline
@@ -145,10 +156,13 @@ python3 -m classnotes verify <note.md> <transcript.txt>
 python3 -m classnotes status [--from DATE] [--all]     # term coverage
 ```
 
+`run`, `note` and `synthesis` accept `--dry-run`. `verify` and `status` do not, because
+neither writes anything -- there is nothing for a dry run to skip.
+
 Division of labour, deliberately:
 
 - **Deterministic Python, not Groq:** transcript reuse, the density/completeness check
-  (re-transcribes one dense chunk from `raw/<date>-live/` with the language forced and
+  (re-transcribes the densest chunk from `raw/<date>-live/` with the language forced and
   compares word counts -- the same check that caught the 08-30 lecture's ~25% word loss
   and confirmed 09-06's low pace was cadence, not loss), the `## ⚡ Exam signals` section
   (assembled from `extract-signals.py` + LESSONS.md's phrase vocabulary, never from the
@@ -165,15 +179,17 @@ as published. There is no auto-repair pass -- an LLM handed "this quote didn't m
 will usually just drop the quotation marks, which passes the re-check without fixing
 anything.
 
-**Known gap vs. the human-in-the-loop workflow:** the note is drafted from the cached
-digest plus the deterministically-extracted signals, not from Claude reading the full
-transcript with judgement. It gets the structure and most figures right (verified
-against the real 2026-09-06 transcript), but it won't catch what a careful read of the
-raw transcript catches -- garbled-term reconstruction, cross-checking against LESSONS.md
-for factual slips, or noticing when `extract-signals.py`'s output is mostly noise on a
-given professor's session (a documented failure mode for walkthrough-style lectures --
-see LESSONS.md in a course directory). Treat its output as a strong first draft, not a
-replacement for the skill-driven workflow on notes that matter.
+**Known gap vs. the agent workflow:** the note is drafted from the cached digest plus the
+deterministically-extracted signals, not from a full read of the transcript with judgement.
+It gets the structure and most figures right (verified against a real transcript), but it
+won't catch what a careful read catches -- garbled-term reconstruction, cross-checking
+LESSONS.md for factual slips, or noticing when `extract-signals.py`'s output is mostly
+noise on a given professor's session (a documented failure mode for walkthrough-style
+lectures). Treat its output as a strong first draft, not a replacement for the agent
+workflow on notes that matter.
+
+See [`docs/PYTHON-PIPELINE.md`](docs/PYTHON-PIPELINE.md) for setup, a worked walkthrough
+and troubleshooting.
 
 Testing: pass `--out-root <dir>` to `note`/`synthesis`/`run` to redirect writes (SYNTHESIS.md
 included) to a scratch directory instead of the real course tree -- reads (transcripts,

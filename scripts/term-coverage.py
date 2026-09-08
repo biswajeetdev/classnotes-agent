@@ -16,9 +16,17 @@ counted as gaps -- see the note in that file about not crying wolf.
 Exit status: 0 when nothing is missing, 2 when something is.
 """
 import argparse, datetime, glob, os, re, sys
+from zoneinfo import ZoneInfo
 
 ROOT = os.path.expanduser("~/class-notes")
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+# courses.yaml's header states all times are IST. Compare against IST explicitly
+# rather than trusting the machine's local tz to happen to be set right -- see
+# the 2026-09-08 bug where a class starting in ~1h was reported as already missed
+# because "today" was compared as a bare date, not against the session's own end
+# time in any timezone at all.
+TZ = ZoneInfo("Asia/Kolkata")
 
 
 def load_courses():
@@ -39,7 +47,9 @@ def load_courses():
             day = next((d for d in DAYS if d in part), None)
             t = re.search(r"(\d\d):(\d\d)\s*-\s*(\d\d):(\d\d)", part)
             if day and t:
-                sessions.append((day, t.group(1) + t.group(2)))
+                start = t.group(1) + t.group(2)
+                end = t.group(3) + t.group(4)
+                sessions.append((day, start, end))
         out.append((slug, sessions))
     return out
 
@@ -86,6 +96,7 @@ def main():
     start = datetime.date.fromisoformat(a.start)
     end = datetime.date.fromisoformat(a.end) if a.end else datetime.date.today()
     off_days, off_course, off_slot = load_cancellations()
+    now = datetime.datetime.now(TZ)
 
     held = missing = cancelled = 0
     report = []
@@ -95,8 +106,15 @@ def main():
         d = start
         while d <= end:
             iso, dn = d.isoformat(), DAYS[d.weekday()]
-            for sday, slot in sessions:
+            for sday, slot, slot_end in sessions:
                 if sday != dn:
+                    continue
+                # A slot only becomes assessable once it has actually finished --
+                # otherwise a class later today (or still in progress) gets
+                # reported as missed before anyone could have captured it.
+                eh, em = int(slot_end[:2]), int(slot_end[2:])
+                ends_at = datetime.datetime(d.year, d.month, d.day, eh, em, tzinfo=TZ)
+                if ends_at > now:
                     continue
                 if iso in off_days or (iso, slug) in off_course or (iso, slug, slot) in off_slot:
                     cancelled += 1
