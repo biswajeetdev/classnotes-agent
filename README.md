@@ -130,6 +130,57 @@ verifies it against the transcript, and rebuilds `SYNTHESIS.md`.
 
 ---
 
+## Python pipeline (no agent)
+
+The workflow above needs Claude Code sitting in the loop to write the note and rebuild
+the synthesis. `classnotes/` is a standalone Python package that runs the same workflow
+end to end from one command, with no agent -- the only AI dependency is **Groq** (the
+same API `digest.py` already uses).
+
+```bash
+python3 -m classnotes run <course-slug> [<input.mp4> | --date YYYY-MM-DD]  # full pipeline
+python3 -m classnotes note <course-slug> <date>       # (re)write the note from a kept transcript
+python3 -m classnotes synthesis <course-slug>          # rebuild SYNTHESIS.md
+python3 -m classnotes verify <note.md> <transcript.txt>
+python3 -m classnotes status [--from DATE] [--all]     # term coverage
+```
+
+Division of labour, deliberately:
+
+- **Deterministic Python, not Groq:** transcript reuse, the density/completeness check
+  (re-transcribes one dense chunk from `raw/<date>-live/` with the language forced and
+  compares word counts -- the same check that caught the 08-30 lecture's ~25% word loss
+  and confirmed 09-06's low pace was cadence, not loss), the `## ⚡ Exam signals` section
+  (assembled from `extract-signals.py` + LESSONS.md's phrase vocabulary, never from the
+  digest), the verify-notes.py gate, and SYNTHESIS.md's rebuild-from-scratch and 500-line
+  split.
+- **Groq:** the digest pass (reused from `digest.py`, unchanged), the note's prose
+  sections (In one line, Key concepts, Formulas, Worked examples, Open questions, Admin),
+  and the synthesis's cross-lecture judgement (How it fits together, ranked exam
+  questions, Revised or contradicted).
+
+The verify-notes.py gate is real, not decorative: a flagged note is still written to
+disk (so it can be inspected) but reported and exits non-zero rather than being treated
+as published. There is no auto-repair pass -- an LLM handed "this quote didn't match"
+will usually just drop the quotation marks, which passes the re-check without fixing
+anything.
+
+**Known gap vs. the human-in-the-loop workflow:** the note is drafted from the cached
+digest plus the deterministically-extracted signals, not from Claude reading the full
+transcript with judgement. It gets the structure and most figures right (verified
+against the real 2026-09-06 transcript), but it won't catch what a careful read of the
+raw transcript catches -- garbled-term reconstruction, cross-checking against LESSONS.md
+for factual slips, or noticing when `extract-signals.py`'s output is mostly noise on a
+given professor's session (a documented failure mode for walkthrough-style lectures --
+see LESSONS.md in a course directory). Treat its output as a strong first draft, not a
+replacement for the skill-driven workflow on notes that matter.
+
+Testing: pass `--out-root <dir>` to `note`/`synthesis`/`run` to redirect writes (SYNTHESIS.md
+included) to a scratch directory instead of the real course tree -- reads (transcripts,
+LESSONS.md, courses.yaml) still come from the real `$CLASSNOTES_ROOT`.
+
+---
+
 ## Script reference
 
 | Script | Does |
