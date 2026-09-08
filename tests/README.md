@@ -93,47 +93,36 @@ file be rewritten against the real `density.check(live_dir, lang) ->
 DensityResult` API instead of guessing, so it's now a real, precise unit
 test rather than a name-guessing one.
 
-## Findings for pybuild
+## Findings from writing these tests
 
-Reading the real (in-progress) package while writing these tests turned up
-two things still worth a look (a third, initially reported, turned out to
-be intentional design -- see below), plus one pybuild already fixed:
+Writing the suite against the real package surfaced three issues. **All three are
+now fixed** -- this section is kept as a record of what the tests caught, not as an
+open to-do list. Each has a regression test guarding it.
 
-1. **`status` doesn't honour `CLASSNOTES_ROOT`.** `cmd_status` shells out to
-   `scripts/term-coverage.py` via `scripts_bridge.term_coverage(root, args)`,
-   which sets the subprocess's `cwd` to `root` -- but `term-coverage.py`'s
-   `ROOT` is `os.path.expanduser("~/class-notes")`, hardcoded at import time,
-   and never reads `cwd`. So `python3 -m classnotes status` always reads the
-   *real* `~/class-notes/courses.yaml` regardless of `CLASSNOTES_ROOT`. On
-   this machine that file exists, so this suite deliberately never invokes
-   `status` via the CLI (see `test_cli_contract.py`'s module docstring) --
-   `test_term_coverage_script.py` covers the same parsing logic safely
-   instead. Likely fix: either have `term-coverage.py` read `CLASSNOTES_ROOT`
-   itself (matching `config.default_root()`), or have `scripts_bridge` pass
-   `--root` (would need adding to term-coverage.py's argparse) instead of
-   relying on `cwd`.
+1. **`status` did not honour `CLASSNOTES_ROOT`.** `term-coverage.py` hardcoded
+   `ROOT = os.path.expanduser("~/class-notes")` at import time, so
+   `python3 -m classnotes status` read the *real* course tree no matter what
+   `CLASSNOTES_ROOT` said. That made the command untestable without touching real
+   user data, so this suite originally refused to invoke it via the CLI at all.
+   Fixed in both places: `term-coverage.py` now reads the env var itself, and
+   `scripts_bridge.term_coverage()` threads it through explicitly rather than
+   relying on ambient inheritance.
 
-2. **`config.resolve_course()`'s alias match returns the first hit, not a
-   unique one.** The slug-substring fallback explicitly requires
-   `len(substr) == 1` before returning (never guess silently), but the
-   earlier alias/code-match loop just returns on the first course whose
-   aliases contain the needle -- two courses sharing an alias would silently
-   resolve to whichever is listed first in `courses.yaml`, rather than
-   failing the way an ambiguous substring does.
-   `test_course_resolution.py::test_ambiguous_alias_does_not_silently_pick_one`
-   fails on this today; the fix is likely making that loop collect all
-   matches and require exactly one, same as the substring fallback below it.
+2. **`config.resolve_course()` picked the first matching alias, not a unique one.**
+   The slug-substring fallback already required exactly one match before returning
+   -- never guess silently -- but the alias/code loop above it returned on the first
+   hit, so two courses sharing an alias would silently resolve to whichever appeared
+   first in `courses.yaml`. That is the failure mode SKILL.md warns about most
+   sharply: a note filed under the wrong course corrupts that course's synthesis.
+   Now requires uniqueness and raises `ConfigError` listing every match.
+   Guarded by `test_course_resolution.py::test_ambiguous_alias_does_not_silently_pick_one`.
 
-**Retracted:** `verify` lacking `--dry-run` was initially flagged as
-contradicting the "all commands support --dry-run" contract line. Confirmed
-with pybuild: intentional -- `verify` and `status` are already non-mutating
-and were never meant to have it. `test_cli_contract.py` now tests `verify`
-runs plainly instead.
+3. **`density.py` hardcoded the whisper model path** to `~/class-notes/models/...`,
+   ignoring `CLASSNOTES_ROOT` like every other module honoured it. Found while
+   answering a question about the sandbox mechanism, fixed and re-verified against
+   real live-capture chunks (466 vs 466, unchanged result).
 
-**Already fixed by pybuild:** `classnotes/density.py` had
-`~/class-notes/models/...` hardcoded as module-level constants, ignoring
-`CLASSNOTES_ROOT` -- inconsistent with every other module. Fixed in their
-commit `0043bf4`; model paths now resolve from `config.default_root()` at
-call time, with `WHISPER_MODEL`/`WHISPER_VAD_MODEL` still overriding
-explicitly (which is what `test_density_guard.py` sets, so it's unaffected
-either way).
+One test remains skipped by design: the chunk-numbering-gap explainer (gotcha 9)
+has no module yet. It skips with a message naming the candidate import paths to try
+once that lands, rather than passing vacuously.
+
