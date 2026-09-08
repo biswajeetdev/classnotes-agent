@@ -21,8 +21,9 @@ DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 # into a `language:` field in courses.yaml later if that's preferred -- the
 # loader below checks there first and only falls back to this dict.
 #
-# policy-ethics-legal: LESSONS.md records "Lectures in English throughout -- no
-# Hindi. Force -l en for gap recovery" for Dr. Karan's course (MB-GAI-505).
+# Example: a course whose LESSONS.md records that its lectures are in English
+# throughout, with no code-switching, is safe to force to `en` -- the
+# language-lock failure whisper hits on mixed-language audio does not apply.
 LANG_OVERRIDES = {
     "policy-ethics-legal": "en",
 }
