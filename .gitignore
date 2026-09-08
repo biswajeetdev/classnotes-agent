@@ -11,6 +11,7 @@
 # Deny-by-default: ignore everything at the root, then re-allow only the tool.
 /*
 !/scripts/
+!/classnotes/
 !/docs/
 !/skill/
 !/.gitignore
@@ -56,3 +57,4 @@ __pycache__/
 *.bak
 *.bak-*
 *.disabled-*
+.testout/
