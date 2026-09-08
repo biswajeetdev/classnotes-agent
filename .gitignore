@@ -11,6 +11,7 @@
 # Deny-by-default: ignore everything at the root, then re-allow only the tool.
 /*
 !/scripts/
+!/classnotes/
 !/docs/
 !/skill/
 !/classnotes/
@@ -65,3 +66,4 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv/
+.testout/
