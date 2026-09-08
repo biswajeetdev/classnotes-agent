@@ -16,9 +16,12 @@ or fail for real right now.
 | `test_extract_signals_script.py` | "A summariser will drop the single most important sentence" (deterministic extraction catches absolute/negated framing with no signal word) and "live-coding narration is not emphasis" (repetition detection surfaces it; discarding it is a human step). |
 | `test_term_coverage_script.py` | Gotcha 11, cancellations parsing (whole-day / per-course / per-slot / `#` comments), against the real `load_cancellations()`; also the session-schedule half of gotcha 10 via `load_courses()`. |
 
-## Contract tests (skip cleanly until pybuild's feat/python-pipeline lands)
+## Contract tests (skip cleanly if the `classnotes` package is absent)
 
-These target the CLI contract given in the task:
+These target the CLI contract. They were written before the package existed and
+guard it now that it has landed; they still skip rather than fail if `classnotes`
+cannot be imported, so the suite stays meaningful when run from a checkout where
+the package is not installed:
 
 ```
 python3 -m classnotes run <course-slug> [<input.mp4>|--date YYYY-MM-DD]
@@ -75,14 +78,14 @@ python3 -m venv .venv && .venv/bin/pip install pytest pyyaml
 
 (`.venv/` is local and gitignored -- see the repo `.gitignore`.)
 
-## What's not testable yet without the implementation
+## Still not covered
 
 `test_silent_chunk_gaps.py` tries a short list of plausible internal
-module/function names for the chunk-numbering-gap explainer (it isn't part
-of the published CLI surface, and no such module exists in the package yet).
-Once pybuild adds it, either it'll already match one of the guesses, or the
-candidate list at the top of that file needs one line added -- the
-assertions underneath don't need to change.
+module/function names for the chunk-numbering-gap explainer (gotcha 9). It isn't
+part of the published CLI surface and no such module exists yet, so this test
+skips -- deliberately, rather than passing vacuously. When that module is added,
+either it will already match one of the guesses, or the candidate list at the top
+of that file needs one line added; the assertions underneath don't need to change.
 
 `test_density_guard.py` originally guessed at a `classnotes.density`
 function this way too, but partway through writing this suite pybuild's
