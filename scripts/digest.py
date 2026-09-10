@@ -68,7 +68,7 @@ def main():
     if not key:
         print("error: GROQ_API_KEY not set. Put it in ~/class-notes/.env", file=sys.stderr)
         return 2
-    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")  # llama-3.3 is decommissioned
     src = sys.argv[1]
     dst = sys.argv[2] if len(sys.argv) > 2 else src.replace(".txt", "-digest.md")
     text = open(src, encoding="utf-8").read()

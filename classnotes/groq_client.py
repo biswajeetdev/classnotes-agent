@@ -22,7 +22,12 @@ def default_model() -> str:
     # Read at call time, not import time -- config.load_env() populates
     # GROQ_MODEL from ~/class-notes/.env only once main() has run, which is
     # after this module is first imported.
-    return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    # llama-3.3-70b-versatile was the original default and has since been
+    # decommissioned -- Groq now answers HTTP 404 "does not exist or you do not
+    # have access to it" for it, which reads like a permissions problem rather
+    # than a retired model. gpt-oss-120b is a reasoning model; chat() handles
+    # the truncation that implies.
+    return os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # Groq sits behind Cloudflare, which rejects Python's default User-Agent with a
 # 403 that looks exactly like a bad API key. It is not -- see digest.py.
