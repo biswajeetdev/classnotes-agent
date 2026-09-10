@@ -34,6 +34,13 @@ class GroqError(Exception):
     pass
 
 
+def _request(payload: dict, key: str) -> urllib.request.Request:
+    return urllib.request.Request(
+        API_URL, data=json.dumps(payload).encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                 "User-Agent": _UA})
+
+
 def require_key() -> str:
     key = os.environ.get("GROQ_API_KEY", "").strip()
     if not key:
@@ -45,20 +52,38 @@ def chat(system: str, user: str, *, model: str | None = None, temperature: float
          max_tokens: int = 2000, retries: int = 5, key: str | None = None) -> str:
     key = key or require_key()
     model = model or default_model()
-    body = json.dumps({
+    payload = {
         "model": model,
         "temperature": temperature,
         "max_completion_tokens": max_tokens,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-    }).encode()
-    req = urllib.request.Request(
-        API_URL, data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                 "User-Agent": _UA})
+    }
+    req = _request(payload, key)
+    bumped = False
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(req, timeout=180) as r:
-                return json.loads(r.read())["choices"][0]["message"]["content"]
+                data = json.loads(r.read())
+            choice = data["choices"][0]
+            content = (choice["message"].get("content") or "").strip()
+            if content:
+                return content
+            # A reasoning model (GROQ_MODEL=openai/gpt-oss-120b is one) spends the
+            # completion budget on its `reasoning` field first. If the budget runs
+            # out there, the API returns HTTP 200 with finish_reason="length" and
+            # an EMPTY content -- a success-shaped total failure. Returning "" here
+            # let synthesis.rebuild() overwrite a real SYNTHESIS.md with an empty
+            # skeleton. Give it one bigger budget, then fail loudly.
+            if choice.get("finish_reason") == "length" and not bumped:
+                bumped = True
+                payload["max_completion_tokens"] = min(max_tokens * 4, 16000)
+                req = _request(payload, key)
+                continue
+            raise GroqError(
+                f"Groq returned no content (finish_reason="
+                f"{choice.get('finish_reason')!r}, model={model}). "
+                f"Reasoning models need a larger max_tokens than {max_tokens}."
+            )
         except urllib.error.HTTPError as e:
             raw = e.read().decode(errors="replace")
             if e.code in (429, 413):

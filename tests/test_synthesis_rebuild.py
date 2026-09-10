@@ -80,3 +80,61 @@ def test_synthesis_dry_run_does_not_touch_the_file(classnotes_root, monkeypatch)
     assert out_path is None
     assert not called, "dry-run must not call Groq at all"
     assert paths.synthesis(course.slug).read_text(encoding="utf-8") == old_synthesis
+
+
+def test_rebuild_refuses_to_overwrite_when_the_model_returns_nothing(classnotes_root, monkeypatch):
+    """A SYNTHESIS.md is a whole course's accumulated exam-prep value and rebuild
+    is a full overwrite, so an unusable model reply must not be written over it.
+
+    Measured 10 Sep 2026: GROQ_MODEL was a reasoning model, its `reasoning` field
+    ate the completion budget, the API returned 200 with empty content, and this
+    replaced an 18 KB synthesis with five "(not generated)" headings. The file
+    must come out byte-identical instead."""
+    require_classnotes()
+
+    import pytest
+
+    from classnotes import groq_client, synthesis
+
+    paths, course, old_synthesis = _seeded_paths_and_course(classnotes_root, monkeypatch)
+    monkeypatch.setattr(groq_client, "chat", lambda *a, **k: "")
+
+    with pytest.raises(RuntimeError):
+        synthesis.rebuild(paths, course)
+
+    assert paths.synthesis(course.slug).read_text(encoding="utf-8") == old_synthesis, (
+        "rebuild overwrote a real SYNTHESIS.md with an empty skeleton"
+    )
+
+
+def test_chat_raises_instead_of_returning_empty_content(monkeypatch):
+    """groq_client.chat() must never hand a caller "" as if it were a reply --
+    that is the success-shaped failure that made the overwrite above possible.
+    One retry at a bigger budget, then a loud GroqError."""
+    require_classnotes()
+
+    import json
+
+    import pytest
+
+    from classnotes import groq_client
+
+    budgets = []
+
+    class _Resp:
+        def __init__(self, payload): self._p = payload
+        def read(self): return json.dumps(self._p).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=None):
+        budgets.append(json.loads(req.data)["max_completion_tokens"])
+        return _Resp({"choices": [{"finish_reason": "length",
+                                   "message": {"content": "", "reasoning": "thinking..."}}]})
+
+    monkeypatch.setattr(groq_client.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(groq_client.GroqError):
+        groq_client.chat("sys", "user", max_tokens=500, key="test-key")
+
+    assert len(budgets) == 2, f"expected one retry at a larger budget, got {budgets}"
+    assert budgets[1] > budgets[0]
