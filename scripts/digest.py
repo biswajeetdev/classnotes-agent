@@ -15,7 +15,14 @@ the FULL original transcript, never against this digest. Keep that order.
 import json, os, re, sys, time, urllib.error, urllib.request
 
 def load_env():
-    p = os.path.expanduser("~/class-notes/.env")
+    # Resolve .env from the configured root, not a hardcoded $HOME. transcribe.sh
+    # already took this fix for the model files; digest.py kept reading the real
+    # ~/class-notes/.env even when CLASSNOTES_ROOT pointed somewhere else, so the
+    # test suite picked up the user's live API key and spent real quota against it
+    # -- three `run` tests timed out at 30s once the default model was one that
+    # actually answers.
+    root = os.environ.get("CLASSNOTES_ROOT") or os.path.expanduser("~/class-notes")
+    p = os.path.join(root, ".env")
     if os.path.exists(p):
         for ln in open(p):
             ln = ln.strip()

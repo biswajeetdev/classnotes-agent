@@ -67,3 +67,33 @@ def test_nothing_is_written_outside_the_root(classnotes_root, fake_bin, monkeypa
 
     after = _snapshot(sibling)
     assert after == before, "the pipeline wrote outside its configured root"
+
+
+def test_digest_reads_its_env_from_the_configured_root(tmp_path, monkeypatch):
+    """digest.py used to open ~/class-notes/.env unconditionally, so a run under a
+    throwaway CLASSNOTES_ROOT still picked up the user's real GROQ_API_KEY and
+    spent real quota. The test suite was doing exactly that."""
+    import subprocess
+    import sys
+
+    from conftest import SCRIPTS
+
+    fake_root = tmp_path / "root"
+    fake_root.mkdir()
+    (fake_root / ".env").write_text("GROQ_API_KEY=from-the-configured-root\n", encoding="utf-8")
+
+    probe = (
+        "import os, sys, importlib.util;"
+        f"spec=importlib.util.spec_from_file_location('d', {str(SCRIPTS / 'digest.py')!r});"
+        "m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m);"
+        "m.load_env(); print(os.environ.get('GROQ_API_KEY', ''))"
+    )
+    # Drop the key entirely rather than blanking it: load_env uses setdefault, and
+    # an empty string already counts as set.
+    env = {k: v for k, v in os.environ.items() if k != "GROQ_API_KEY"}
+    env["CLASSNOTES_ROOT"] = str(fake_root)
+    out = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True, text=True, timeout=30, env=env,
+    )
+    assert out.stdout.strip() == "from-the-configured-root", out.stdout + out.stderr

@@ -17,9 +17,80 @@ import urllib.request
 
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# Free tier is 8,000 tokens/minute across prompt + completion. Leave room for
-# the prompt: a completion budget at or above the cap can never be served.
+# Free tier is 8,000 tokens/minute across prompt + completion, measured from the
+# x-ratelimit-limit-tokens header. Billing is by ACTUAL usage, not by the budget
+# asked for: a request with max_completion_tokens=30000 is served happily. So a
+# request fails only when what it really consumes exceeds what the bucket holds,
+# and the fix is to size the completion budget against the prompt rather than to
+# pick a smaller constant.
+TPM_LIMIT = int(os.environ.get("GROQ_TPM_LIMIT", "8000"))
 TPM_CEILING = int(os.environ.get("GROQ_MAX_COMPLETION_TOKENS", "6000"))
+TPM_MARGIN = 400  # tokeniser slack + the response envelope
+
+# Rate-limit state from the last response's headers. Groq reports what is left in
+# the bucket and when it refills, which beats guessing at a local token bucket.
+_limits: dict = {"remaining": None, "reset": 0.0, "at": 0.0}
+
+
+def estimate_tokens(text: str) -> int:
+    """~4 chars/token. Deliberately crude: it only has to be right enough to keep
+    a request inside the bucket, and TPM_MARGIN absorbs the error."""
+    return len(text) // 4 + 1
+
+
+def budget_for(prompt: str, want: int = TPM_CEILING) -> int:
+    """The largest completion budget that can still fit beside this prompt.
+
+    Without this, synthesis asked for 6,000 completion tokens next to a 4,170-token
+    prompt on a 6-lecture course: ~10,000 against an 8,000 bucket, which can never
+    be served no matter how long you wait. It burned five retries and died
+    "gave up after retries (rate limited)", a message that names the symptom and
+    hides the cause."""
+    room = TPM_LIMIT - estimate_tokens(prompt) - TPM_MARGIN
+    return max(512, min(want, room))
+
+
+def _parse_reset(value: str | None) -> float:
+    """Groq spells these "2.857s", "1m30s", "1h39m21.6s"."""
+    if not value:
+        return 0.0
+    total, seen = 0.0, False
+    # "ms" must precede "m": Python's alternation is ordered, so (h|m|s|ms) reads
+    # "659ms" as 659 MINUTES and every subsequent wait pins to the 90s cap.
+    for amount, unit in re.findall(r"([\d.]+)\s*(ms|h|m|s)", value):
+        seen = True
+        total += float(amount) * {"h": 3600, "m": 60, "s": 1, "ms": 0.001}[unit]
+    if seen:
+        return total
+    try:
+        return float(value)
+    except ValueError:
+        return 0.0
+
+
+def _note_limits(headers) -> None:
+    remaining = headers.get("x-ratelimit-remaining-tokens")
+    if remaining is None:
+        return
+    try:
+        _limits["remaining"] = int(float(remaining))
+    except (TypeError, ValueError):
+        return
+    _limits["reset"] = _parse_reset(headers.get("x-ratelimit-reset-tokens"))
+    _limits["at"] = time.monotonic()
+
+
+def _wait_for_room(need: int) -> None:
+    """Sleep until the bucket can hold `need`, rather than firing a doomed request
+    and reading the 429 afterwards."""
+    remaining = _limits["remaining"]
+    if remaining is None or need <= remaining:
+        return
+    waited = time.monotonic() - _limits["at"]
+    sleep_for = _limits["reset"] - waited
+    if sleep_for > 0:
+        time.sleep(min(sleep_for + 1, 90))
+    _limits["remaining"] = None  # stale after the wait; the next response refreshes it
 
 
 def default_model() -> str:
@@ -61,18 +132,29 @@ def chat(system: str, user: str, *, model: str | None = None, temperature: float
          max_tokens: int = 2000, retries: int = 5, key: str | None = None) -> str:
     key = key or require_key()
     model = model or default_model()
+    # Clamp the budget against the prompt up front. An oversized budget IS served
+    # (billing is by actual usage), but a reasoning model will spend whatever it is
+    # given, so the request that comes back is the one that blows the bucket.
     payload = {
         "model": model,
         "temperature": temperature,
-        "max_completion_tokens": max_tokens,
+        "max_completion_tokens": budget_for(system + user, want=max_tokens),
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
     }
+    prompt_tokens = estimate_tokens(system) + estimate_tokens(user)
+    if prompt_tokens + TPM_MARGIN >= TPM_LIMIT:
+        raise GroqError(
+            f"prompt is ~{prompt_tokens} tokens against a {TPM_LIMIT}-token/minute "
+            "limit; no completion budget can fit beside it. Send less input."
+        )
     req = _request(payload, key)
     bumped = False
     for attempt in range(retries):
         try:
+            _wait_for_room(prompt_tokens + payload["max_completion_tokens"])
             with urllib.request.urlopen(req, timeout=180) as r:
                 data = json.loads(r.read())
+                _note_limits(r.headers)
             choice = data["choices"][0]
             content = (choice["message"].get("content") or "").strip()
             truncated = choice.get("finish_reason") == "length"
@@ -94,7 +176,8 @@ def chat(system: str, user: str, *, model: str | None = None, temperature: float
                 # can never fit, so every retry 429s and the call dies "rate limited"
                 # instead of returning the answer the smaller budget nearly had.
                 bumped = True
-                payload["max_completion_tokens"] = min(max_tokens * 2, TPM_CEILING)
+                payload["max_completion_tokens"] = budget_for(
+                    system + user, want=max_tokens * 2)
                 req = _request(payload, key)
                 continue
             if content:
@@ -106,9 +189,34 @@ def chat(system: str, user: str, *, model: str | None = None, temperature: float
             )
         except urllib.error.HTTPError as e:
             raw = e.read().decode(errors="replace")
+            _note_limits(e.headers)
             if e.code in (429, 413):
+                # Two different ceilings answer 429. The per-minute one (TPM) clears
+                # in seconds and is worth waiting out. The per-DAY one (TPD, 200,000
+                # on the free tier) does not: at 199,067 used, a 13-second wait buys
+                # back ~1,000 tokens, so a 6,000-token synthesis pass can never
+                # complete and the retries just burn the clock before reporting a
+                # generic "rate limited" that names neither cause.
+                #
+                # Note the per-minute headers stay healthy while TPD is exhausted --
+                # x-ratelimit-remaining-tokens read 8000 against this very 429 -- so
+                # the body is the only place the real limit is named.
+                if "per day" in raw or "TPD" in raw:
+                    used = re.search(r"Limit (\d+), Used (\d+)", raw)
+                    detail = f" ({used.group(2)} of {used.group(1)} used)" if used else ""
+                    raise GroqError(
+                        f"Groq daily token limit reached{detail}. This resets on a "
+                        "24-hour cycle; waiting will not help today. Use a smaller "
+                        "model, or upgrade the tier."
+                    ) from e
+                after = e.headers.get("retry-after")
                 m = re.search(r"try again in ([\d.]+)s", raw)
-                wait = min(float(m.group(1)) + 2, 90) if m else 20 * (attempt + 1)
+                if after:
+                    wait = min(float(after) + 2, 90)
+                elif m:
+                    wait = min(float(m.group(1)) + 2, 90)
+                else:
+                    wait = 20 * (attempt + 1)
                 time.sleep(wait)
                 continue
             raise GroqError(f"Groq HTTP {e.code}: {raw[:300]}") from e

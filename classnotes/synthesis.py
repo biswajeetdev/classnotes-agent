@@ -8,10 +8,17 @@ you 100 files and no study material"). Harvesting is deterministic Python
 something a template can produce.
 
 Feeding Groq the harvested per-lecture digest (title/one-liner/concepts/⚡
-signals/open questions) rather than the full notes keeps this well under the
-free-tier TPM cap even as a course accumulates many lectures, and it's the
-right level of detail anyway -- the synthesis argument is built from what
-each lecture judged important, not from re-reading every paragraph.
+signals/open questions) rather than the full notes is the right level of detail
+anyway -- the synthesis argument is built from what each lecture judged
+important, not from re-reading every paragraph.
+
+That harvest is NOT unconditionally small, though, and this docstring used to
+claim it was. Measured 10 Sep 2026: a 6-lecture course harvests to ~3,690 tokens,
+and asking for all five sections beside that needs more of the free tier's
+8,000-token/minute budget than remains -- unservable at any pacing. So the pass
+is split in two, each half carrying only the fields it uses (concepts and links
+for the index; signals and open questions for the prose). Two trimmed calls send
+less input in total than one combined one.
 """
 from __future__ import annotations
 
@@ -57,6 +64,45 @@ questions given to you. This is the revision to-do list.
 
 Rules: never invent a concept, connection or exam question not supported by what you were
 given. Use the professor's/lecture's own terms. Keep it usable, not exhaustive."""
+
+_RULES = ("Rules: never invent a concept, connection or exam question not supported by what "
+          "you were given. Use the professor's/lecture's own terms. Keep it usable, not "
+          "exhaustive.")
+
+
+def _sections_of(prompt: str, *names: str) -> str:
+    """Lift named sections verbatim out of SYSTEM_PROMPT.
+
+    The two passes below must describe each section exactly as the combined prompt
+    did, or the output contract quietly drifts from what the parser and the tests
+    expect. Deriving them beats maintaining three copies of the same wording."""
+    out = []
+    for name in names:
+        m = re.search(rf"^## {re.escape(name)}\n(.*?)(?=\n## |\nRules:|\Z)", prompt, re.S | re.M)
+        if not m:
+            raise ValueError(f"section {name!r} not found in SYSTEM_PROMPT")
+        out.append(f"## {name}\n{m.group(1).strip()}")
+    return "\n\n".join(out)
+
+
+CONCEPT_PROMPT = (
+    "You write the concept index of a rolling exam-prep synthesis for a university course, "
+    "from a structured harvest of that course's lecture notes (title, one-line summary and "
+    "key concepts for each lecture, in chronological order).\n\n"
+    "Output ONLY markdown in this exact shape, nothing before or after:\n\n"
+    + _sections_of(SYSTEM_PROMPT, "Concept index") + "\n\n" + _RULES
+)
+
+NARRATIVE_PROMPT = (
+    "You write the analytical half of a rolling exam-prep synthesis for a university course, "
+    "from a structured harvest of that course's lecture notes (title, one-line summary, "
+    "flagged exam signals and open questions for each lecture, in chronological order). The "
+    "concept index is written separately -- do not produce one.\n\n"
+    "Output ONLY markdown in this exact shape, nothing before or after:\n\n"
+    + _sections_of(SYSTEM_PROMPT, "How it fits together", "Likely exam questions",
+                   "Revised or contradicted", "Thin ice")
+    + "\n\n" + _RULES
+)
 
 
 @dataclasses.dataclass
@@ -110,6 +156,34 @@ def _harvest_text(lectures: list[LectureHarvest]) -> str:
     return "\n\n".join(parts)
 
 
+def _concept_harvest(lectures: list[LectureHarvest]) -> str:
+    """Just what the concept index needs: title, one-liner, concepts, link.
+
+    Dropping signals and open questions cuts a 6-lecture course from ~3,690 tokens
+    to ~820, which is what buys the completion budget back."""
+    return "\n\n".join(
+        f"### Lecture {lec.date} -- {lec.title}  (link: {lec.link})\n"
+        f"One line: {lec.one_line or '(none)'}\n"
+        f"Key concepts: {', '.join(lec.concepts) or '(none)'}"
+        for lec in lectures
+    )
+
+
+def _narrative_harvest(lectures: list[LectureHarvest]) -> str:
+    """Just what the four prose sections need: the exam signals they rank by and
+    the open questions Thin ice is built from. The concept lists are not needed
+    again -- the concept index pass already used them."""
+    parts = []
+    for lec in lectures:
+        block = (f"### Lecture {lec.date} -- {lec.title}  (link: {lec.link})\n"
+                 f"One line: {lec.one_line or '(none)'}\n"
+                 "Exam signals:\n" + "\n".join(f"  - {s}" for s in lec.signals[:12]))
+        if lec.open_questions:
+            block += "\nOpen questions:\n" + "\n".join(f"  - {q}" for q in lec.open_questions)
+        parts.append(block)
+    return "\n\n".join(parts)
+
+
 def _split_if_too_long(body_by_section: dict, slug: str) -> tuple[str, str | None]:
     """If the assembled file exceeds MAX_LINES, move the Concept index out to
     SYNTHESIS-concepts.md and link it (SKILL.md constraint)."""
@@ -139,12 +213,19 @@ def rebuild(paths, course, *, dry_run: bool = False, model: str | None = None) -
             "no Groq call, no file written"
         ]
 
-    harvest_text = _harvest_text(lectures)
-    # 3,000 sat right on the boundary: a five-section synthesis for a course with a
-    # few lectures lands near 2,300 tokens, and a reasoning model's own thinking is
-    # charged on top, so the reply came back complete or truncated at random.
-    raw = groq_client.chat(SYSTEM_PROMPT, harvest_text, model=model,
+    # Two passes rather than one. A 6-lecture course harvests to ~3,690 tokens, and
+    # asking for a five-section synthesis beside that needs more completion budget
+    # than the 8,000-token/minute bucket has left -- unservable at any pacing, which
+    # is why foundations-ai-models only ever failed "rate limited".
+    #
+    # Splitting by SECTION and trimming each pass to the fields it actually uses
+    # sends LESS input in total (~820 + ~2,860 against ~3,690 for one combined call),
+    # because neither pass carries the fields the other one needs. Both halves then
+    # fit with room for a full answer.
+    raw = groq_client.chat(CONCEPT_PROMPT, _concept_harvest(lectures), model=model,
                            max_tokens=groq_client.TPM_CEILING)
+    raw += "\n\n" + groq_client.chat(NARRATIVE_PROMPT, _narrative_harvest(lectures),
+                                      model=model, max_tokens=groq_client.TPM_CEILING)
 
     sections = {}
     for name in ["## Concept index", "## How it fits together", "## Likely exam questions",
