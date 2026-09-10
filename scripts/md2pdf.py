@@ -61,12 +61,16 @@ def convert(md):
             out.append(f"<h{lvl}>{inline(m.group(2))}</h{lvl}>"); i += 1; continue
         if re.match(r'^\s*[-*]\s+', ln):
             if listtype != "ul": closelist(); out.append("<ul>"); listtype = "ul"
-            out.append(f"<li>{inline(re.sub(r'^\s*[-*]\s+','',ln))}</li>"); i += 1; continue
+            item = re.sub(r'^\s*[-*]\s+', '', ln)
+            out.append(f"<li>{inline(item)}</li>"); i += 1; continue
         if re.match(r'^\s*\d+\.\s+', ln):
             if listtype != "ol": closelist(); out.append("<ol>"); listtype = "ol"
-            out.append(f"<li>{inline(re.sub(r'^\s*\d+\.\s+','',ln))}</li>"); i += 1; continue
+            item = re.sub(r'^\s*\d+\.\s+', '', ln)
+            out.append(f"<li>{inline(item)}</li>"); i += 1; continue
         if re.match(r'^\s*>\s?', ln):
-            closelist(); out.append(f"<blockquote>{inline(re.sub(r'^\s*>\s?','',ln))}</blockquote>"); i += 1; continue
+            closelist()
+            quoted = re.sub(r'^\s*>\s?', '', ln)
+            out.append(f"<blockquote>{inline(quoted)}</blockquote>"); i += 1; continue
         if re.match(r'^\s*(---+|\*\*\*+)\s*$', ln):
             closelist(); out.append("<hr>"); i += 1; continue
         if ln.strip() == "": closelist(); i += 1; continue
