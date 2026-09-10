@@ -153,12 +153,17 @@ def rebuild(paths, course, *, dry_run: bool = False, model: str | None = None) -
     # writing the skeleton anyway destroys that in exchange for nothing. Refuse.
     # (Measured 10 Sep 2026: a reasoning GROQ_MODEL returned empty content and this
     # replaced an 18 KB synthesis with five "(not generated)" headings.)
-    generated = [n for n in sections if "(not generated)" not in sections[n]]
-    if not generated:
-        raise RuntimeError(
-            "synthesis: the model pass returned no usable sections; refusing to "
-            f"overwrite {paths.synthesis(course.slug)}. Nothing was written."
-        )
+    missing = [n for n in sections if "(not generated)" in sections[n]]
+    out_path = paths.synthesis(course.slug)
+    if missing:
+        names = ", ".join(n.lstrip("# ") for n in missing)
+        if out_path.exists():
+            raise RuntimeError(
+                f"synthesis: the model pass did not return {names}; refusing to "
+                f"overwrite the existing {out_path} with '(not generated)' "
+                "headings. Nothing was written -- re-run to try again."
+            )
+        warnings.append(f"first build is missing section(s): {names}")
 
     exam = course.exam or "TBD"
     today = datetime.datetime.now().astimezone().date().isoformat()
@@ -169,15 +174,11 @@ def rebuild(paths, course, *, dry_run: bool = False, model: str | None = None) -
     body, concepts_doc = _split_if_too_long(sections, course.slug)
     full = header + body + "\n"
 
-    out_path = paths.synthesis(course.slug)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(".md.tmp")
     tmp.write_text(full, encoding="utf-8")
     tmp.replace(out_path)
 
-    if len(generated) < len(sections):
-        missing = ", ".join(n.lstrip("# ") for n in sections if n not in generated)
-        warnings.append(f"section(s) the model did not return: {missing}")
 
     if concepts_doc:
         cpath = paths.synthesis_concepts(course.slug)

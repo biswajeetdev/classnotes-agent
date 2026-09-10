@@ -107,6 +107,27 @@ def test_rebuild_refuses_to_overwrite_when_the_model_returns_nothing(classnotes_
     )
 
 
+def test_rebuild_refuses_a_partial_overwrite(classnotes_root, monkeypatch):
+    """A truncated reply is the common case, not the rare one: the model runs out
+    of budget partway down and the trailing sections go missing. Writing those as
+    "(not generated)" over an existing synthesis loses real material, so a partial
+    result must be refused too -- not just a wholly empty one."""
+    require_classnotes()
+
+    import pytest
+
+    from classnotes import groq_client, synthesis
+
+    paths, course, old_synthesis = _seeded_paths_and_course(classnotes_root, monkeypatch)
+    truncated = FAKE_SYNTHESIS_RESPONSE.split("## Revised or contradicted")[0]
+    monkeypatch.setattr(groq_client, "chat", lambda *a, **k: truncated)
+
+    with pytest.raises(RuntimeError):
+        synthesis.rebuild(paths, course)
+
+    assert paths.synthesis(course.slug).read_text(encoding="utf-8") == old_synthesis
+
+
 def test_chat_raises_instead_of_returning_empty_content(monkeypatch):
     """groq_client.chat() must never hand a caller "" as if it were a reply --
     that is the success-shaped failure that made the overwrite above possible.

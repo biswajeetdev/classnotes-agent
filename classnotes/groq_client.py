@@ -66,19 +66,26 @@ def chat(system: str, user: str, *, model: str | None = None, temperature: float
                 data = json.loads(r.read())
             choice = data["choices"][0]
             content = (choice["message"].get("content") or "").strip()
-            if content:
+            truncated = choice.get("finish_reason") == "length"
+            if content and not truncated:
                 return content
+            # finish_reason="length" means the reply was cut off mid-thought, so
+            # even a non-empty content is a partial answer -- for the synthesis
+            # pass that arrives as prose with the section headings missing, which
+            # is indistinguishable from "the model returned nothing usable".
             # A reasoning model (GROQ_MODEL=openai/gpt-oss-120b is one) spends the
             # completion budget on its `reasoning` field first. If the budget runs
             # out there, the API returns HTTP 200 with finish_reason="length" and
             # an EMPTY content -- a success-shaped total failure. Returning "" here
             # let synthesis.rebuild() overwrite a real SYNTHESIS.md with an empty
             # skeleton. Give it one bigger budget, then fail loudly.
-            if choice.get("finish_reason") == "length" and not bumped:
+            if truncated and not bumped:
                 bumped = True
                 payload["max_completion_tokens"] = min(max_tokens * 4, 16000)
                 req = _request(payload, key)
                 continue
+            if content:
+                return content  # truncated twice; a partial reply beats nothing
             raise GroqError(
                 f"Groq returned no content (finish_reason="
                 f"{choice.get('finish_reason')!r}, model={model}). "
