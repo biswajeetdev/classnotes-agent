@@ -60,8 +60,22 @@ if [ -f "${OUTBASE}.txt" ] && [ "${FORCE:-0}" != "1" ]; then
   exit 1
 fi
 
+# Performance cores on Apple silicon, else all cores, else nproc on Linux, else 4.
+# sysctl exists on Linux but has no hw.logicalcpu, so an unguarded fallback chain
+# yields an empty -t and whisper-cli gets no thread count at all.
+default_threads() {
+  sysctl -n hw.perflevel0.logicalcpu 2>/dev/null \
+    || sysctl -n hw.logicalcpu 2>/dev/null \
+    || nproc 2>/dev/null \
+    || echo 4
+}
+
 mkdir -p "$(dirname "$OUTBASE")"
-WAV="$(mktemp -t classnotes).wav"
+# GNU mktemp requires at least three X's in a -t template and rejects a bare
+# prefix; BSD mktemp accepts the template and appends its own suffix. This form
+# is the only one both agree on -- without it the script dies on Linux with
+# "mktemp: too few x's in template", which is what broke CI.
+WAV="$(mktemp -t classnotes.XXXXXX).wav"
 trap 'rm -f "$WAV"' EXIT
 
 echo ">> extracting audio: $(basename "$INPUT")"
@@ -85,7 +99,7 @@ whisper-cli $VAD_ARGS \
   -m "$MODEL" \
   -f "$WAV" \
   -l "$LANG_CODE" \
-  -t "${WHISPER_THREADS:-$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || sysctl -n hw.logicalcpu)}" \
+  -t "${WHISPER_THREADS:-$(default_threads)}" \
   -otxt -osrt \
   -of "$OUTBASE" \
   -pp
