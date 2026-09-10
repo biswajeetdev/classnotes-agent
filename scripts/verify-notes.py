@@ -93,7 +93,30 @@ def main():
     stop = {"Date","Source","Course","Professor","Given","Due","Weight","Status"}
     # A capitalised word at the start of a line, heading, bullet or table cell is
     # just sentence case, not a claim. Only mid-sentence capitals are proper nouns.
-    midsentence = set(re.findall(r"[a-z,;)]\s+([A-Z][a-zA-Z]{3,})\b", body))
+    #
+    # \s spans newlines, so this used to read the first word of a line as
+    # mid-sentence whenever the line above happened to end in a lowercase letter
+    # or a ")" -- which is every heading. That flagged the ordinary verbs opening
+    # "Maps ordered categories..." and "Centers each feature..." as unverified
+    # names. Skip a capital that opens a block (first line, or the line after a
+    # heading or a blank line); a capital opening a wrapped continuation line is
+    # still genuinely mid-sentence and is still checked.
+    line_start = {0}
+    for m in re.finditer(r"\n", body):
+        line_start.add(m.end())
+
+    def opens_a_block(pos):
+        if pos not in line_start:
+            return False
+        prev_end = body.rfind("\n", 0, pos - 1)
+        prev = body[prev_end + 1:pos - 1] if pos else ""
+        return not prev.strip() or prev.lstrip().startswith("#")
+
+    midsentence = {
+        m.group(1)
+        for m in re.finditer(r"[a-z,;)]\s+([A-Z][a-zA-Z]{3,})\b", body)
+        if not opens_a_block(m.start(1))
+    }
     for name in midsentence:
         if name in stop: continue
         n = norm(name).strip()
