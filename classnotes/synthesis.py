@@ -140,7 +140,11 @@ def rebuild(paths, course, *, dry_run: bool = False, model: str | None = None) -
         ]
 
     harvest_text = _harvest_text(lectures)
-    raw = groq_client.chat(SYSTEM_PROMPT, harvest_text, model=model, max_tokens=3000)
+    # 3,000 sat right on the boundary: a five-section synthesis for a course with a
+    # few lectures lands near 2,300 tokens, and a reasoning model's own thinking is
+    # charged on top, so the reply came back complete or truncated at random.
+    raw = groq_client.chat(SYSTEM_PROMPT, harvest_text, model=model,
+                           max_tokens=groq_client.TPM_CEILING)
 
     sections = {}
     for name in ["## Concept index", "## How it fits together", "## Likely exam questions",

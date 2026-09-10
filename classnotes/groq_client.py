@@ -17,6 +17,10 @@ import urllib.request
 
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+# Free tier is 8,000 tokens/minute across prompt + completion. Leave room for
+# the prompt: a completion budget at or above the cap can never be served.
+TPM_CEILING = int(os.environ.get("GROQ_MAX_COMPLETION_TOKENS", "6000"))
+
 
 def default_model() -> str:
     # Read at call time, not import time -- config.load_env() populates
@@ -85,8 +89,12 @@ def chat(system: str, user: str, *, model: str | None = None, temperature: float
             # let synthesis.rebuild() overwrite a real SYNTHESIS.md with an empty
             # skeleton. Give it one bigger budget, then fail loudly.
             if truncated and not bumped:
+                # Bounded by the free tier's 8,000 tokens/minute, which counts the
+                # prompt too: a blind 4x of a 3,000-token budget asks for 12,000 and
+                # can never fit, so every retry 429s and the call dies "rate limited"
+                # instead of returning the answer the smaller budget nearly had.
                 bumped = True
-                payload["max_completion_tokens"] = min(max_tokens * 4, 16000)
+                payload["max_completion_tokens"] = min(max_tokens * 2, TPM_CEILING)
                 req = _request(payload, key)
                 continue
             if content:
