@@ -52,13 +52,26 @@ Each student question and the answer given.
 Any task, deadline, schedule change, or material promised. Quote the exact instruction.
 """
 
+def is_reasoning_model(model):
+    return "gpt-oss" in model or "qwen" in model
+
+
 def call(chunk, key, model):
-    body = json.dumps({
+    # gpt-oss-* are REASONING models: they spend the completion budget on an internal
+    # `reasoning` field BEFORE writing `content`. Measured at max_completion_tokens=10,
+    # the reply came back finish_reason=length with reasoning text and an empty content
+    # -- an HTTP 200 that silently produced an empty digest. Two defences: a budget big
+    # enough to reach the content with reasoning capped low, and never letting an empty
+    # or truncated reply through (see the checks below).
+    payload = {
         "model": model,
-        "temperature": 0.1, "max_completion_tokens": 1500,
+        "temperature": 0.1, "max_completion_tokens": 4000,
         "messages": [{"role": "system", "content": PROMPT},
                      {"role": "user", "content": chunk}],
-    }).encode()
+    }
+    if is_reasoning_model(model):
+        payload["reasoning_effort"] = "low"  # non-reasoning models reject this field
+    body = json.dumps(payload).encode()
     # Groq sits behind Cloudflare, which rejects Python's default User-Agent with
     # "403 error code: 1010" -- which looks exactly like a bad API key. It is not.
     req = urllib.request.Request(
@@ -67,7 +80,21 @@ def call(chunk, key, model):
                  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"})
     with urllib.request.urlopen(req, timeout=180) as r:
-        return json.loads(r.read())["choices"][0]["message"]["content"]
+        payload = json.loads(r.read())
+    choice = payload["choices"][0]
+    content = (choice["message"].get("content") or "").strip()
+    # NEVER return an empty or truncated digest silently. A digest that looks like a
+    # short file is indistinguishable from a good one until exam time, by which point
+    # the transcript context is gone. Fail loudly instead.
+    if not content:
+        raise RuntimeError(
+            f"empty content from {model} (finish_reason={choice.get('finish_reason')}). "
+            "The model spent its budget on reasoning. Raise max_completion_tokens.")
+    if choice.get("finish_reason") == "length":
+        raise RuntimeError(
+            f"truncated content from {model} (finish_reason=length). "
+            "Raise max_completion_tokens or lower DIGEST_CHUNK_WORDS.")
+    return content
 
 def main():
     load_env()

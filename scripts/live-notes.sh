@@ -192,8 +192,16 @@ transcribe_chunk() {
     return 0
   fi
   QUIET=0
+  # -mc 0 (max context = 0) is REQUIRED, not optional. Without it whisper carries decoder
+  # context across windows and falls into repetition loops: it emits the same line dozens
+  # of times and the transcript looks plausible until you count consecutive runs.
+  # Measured across three live captures on the same day with identical settings, the
+  # longest run of one repeated line was 2 (clean), 26 (looped) and 46 (looped) -- two of
+  # three had to be re-transcribed from the kept .wav chunks. Check any new transcript
+  # with the max-CONSECUTIVE-run count, never raw repeat counts: raw counts flag ordinary
+  # ASR stutter and cause alarm fatigue.
   whisper-cli -m "$ROOT/models/ggml-large-v3-turbo.bin" -f "$w" -l auto \
-    -t "${WHISPER_THREADS:-4}" $VAD_ARGS -otxt -of "$base" >/dev/null 2>&1
+    -t "${WHISPER_THREADS:-4}" -mc 0 $VAD_ARGS -otxt -of "$base" >/dev/null 2>&1
   # With VAD on, a chunk containing no speech produces NO .txt at all -- that is correct,
   # not a failure. Guard the read: the old unconditional `cat` printed a confusing
   # "No such file or directory" for every silent chunk, which is the same signature a
