@@ -111,13 +111,19 @@ avfoundation device indices shifting under a process that opened a device by ind
 After any stop on a day with overlapping sessions, check the other capture's log for
 `0 words`.
 
-### Slide capture silently produces zero frames without permission
-ffmpeg runs, exits cleanly, logs only a benign `NSKVONotifying_AVCaptureScreenInput`
-message, and writes no JPEGs. Indistinguishable from success unless you count the files.
+### Slide capture writes zero frames
+The old full-screen ffmpeg capture failed silently (exit 0, a benign
+`NSKVONotifying_AVCaptureScreenInput` message, no JPEGs), and needed Screen Recording
+permission for the whole terminal — a grant every program run in that terminal inherits. It
+also recorded everything on screen: the terminal, System Settings, classmates' names in chat.
+An orphaned 5-second test ffmpeg once sat hung for two days holding the screen device, and
+blocked every later capture.
 
-Grant **Screen Recording** permission to your terminal in
-System Settings → Privacy & Security. Note that encoder or pixel-format errors produce
-*identical* symptoms, so check the ffmpeg log too.
+It was replaced by `ClassSlides.app`, which captures only the Teams window picked in the system
+picker and needs no permission. Zero frames now has a logged cause in
+`screen-capture-audit.log`: `REFUSED` (a non-Teams window was picked — usually the terminal,
+because the picker takes the window under your click), `picker cancelled`, or
+`no window picked within 5 min`. Minimise the terminal before the picker appears.
 
 Prefer the lecturer's own uploaded slides where they exist — real text, nothing clipped,
 and they include slides clicked past too fast to read.

@@ -8,101 +8,91 @@
 # slide-driven -- formulas, frameworks, diagrams -- so those frames carry content the
 # transcript simply does not contain.
 #
-# REQUIRES: Screen Recording permission for your terminal
-#   System Settings > Privacy & Security > Screen Recording > enable Terminal/iTerm
+# HOW: launches scripts/classslides/ClassSlides.app. On start, Apple's system window picker
+# appears -- minimise other windows, then click the Microsoft Teams meeting window.
 #
-# PRIVACY / SCOPE. Screen Recording is a broad permission, so this script constrains
-# itself to the one job it exists for:
-#   * frames may only be written under ~/class-notes -- it refuses any other path
-#   * a hard stop (SLIDE_MAX_MINUTES, default 210) is enforced by ffmpeg itself, so a
-#     crashed caller cannot leave the screen recording indefinitely
-#   * every start/stop is appended to ~/class-notes/screen-capture-audit.log
-#   * nothing is sent anywhere -- no script in this pipeline makes a network call;
-#     transcription is local whisper.cpp, not an API
-# It still records the WHOLE screen while running: keep the lecture full-screen and
-# nothing private visible. Frames stay on disk until you delete them.
+# SECURITY. No Screen Recording permission is needed or wanted (Terminal's was revoked
+# 2026-09-14; macOS grants it per app, never per window, so it cannot be scoped):
+#   * access comes from the system picker, per session, for ONE window you choose
+#   * any window not owned by Microsoft Teams is refused and the app quits
+#   * only that window's pixels are captured -- overlapping windows never appear
+#   * App Sandbox: no network entitlement, file writes only under ~/class-notes
+#   * hard stop (SLIDE_MAX_MINUTES, default and max 210) enforced inside the app; it also
+#     quits when the Teams window closes, or if nothing is picked within 5 minutes
+#   * every PICKER / START / STOP / REFUSED line goes to ~/class-notes/screen-capture-audit.log
+# The old full-screen ffmpeg path was removed on purpose. Do not re-add it. If macOS asks
+# to let "ffmpeg" bypass the private window picker, click Don't Allow.
 
 set -uo pipefail
+
+APP="$(cd "$(dirname "$0")" && pwd)/classslides/ClassSlides.app"
+ROOT=$(python3 -c "import os;print(os.path.realpath(os.path.expanduser('~/class-notes')))")
+AUDIT="$ROOT/screen-capture-audit.log"
 
 case "${1:-}" in
   start)
     DIR="${2:?usage: capture-slides.sh start <frames-dir> [interval]}"
     IVL="${3:-10}"
+    MAXMIN="${SLIDE_MAX_MINUTES:-210}"
 
-    # --- guardrails ------------------------------------------------------------
-    # Screen Recording is a broad permission. These make it hard for this script to
-    # be used, or to misfire, as anything other than lecture-slide capture.
-
-    # 1. Frames may only ever be written inside ~/class-notes. Anything else is not
-    #    note-taking, so refuse rather than record.
+    # Frames may only ever be written inside ~/class-notes (the app's sandbox enforces the
+    # same boundary; this refuses before anything launches).
     ABS=$(python3 -c "import os,sys;print(os.path.realpath(os.path.expanduser(sys.argv[1])))" "$DIR")
-    ROOT=$(python3 -c "import os;print(os.path.realpath(os.path.expanduser('~/class-notes')))")
     case "$ABS/" in
       "$ROOT"/*) ;;
       *) echo "error: refusing to capture outside ~/class-notes (asked for $ABS)" >&2; exit 1 ;;
     esac
 
-    # 2. Hard stop. Nothing here needs more than one lecture's worth, so a runaway
-    #    or forgotten session cannot sit recording the screen all day.
-    MAXMIN="${SLIDE_MAX_MINUTES:-210}"
+    [ -d "$APP" ] || { echo "error: $APP missing — run scripts/classslides/build.sh" >&2; exit 1; }
 
-    mkdir -p "$DIR"
-    AUDIT="$ROOT/screen-capture-audit.log"
+    # One capture at a time. A second instance would mean something was left running.
+    if OTHER=$(pgrep -x ClassSlides); then
+      echo "error: ClassSlides already running (pid $OTHER) — stop it before starting another" >&2
+      exit 1
+    fi
 
-    IDX=$(ffmpeg -nostdin -f avfoundation -list_devices true -i "" 2>&1 \
-          | sed -n '/AVFoundation video devices/,/audio devices/p' \
-          | grep -i 'capture screen' \
-          | sed -n 's/.*\[\([0-9][0-9]*\)\] *Capture screen.*/\1/p' | head -1)
-    [ -n "$IDX" ] || { echo "error: no screen capture device found" >&2; exit 1; }
-
-    # -r 1/N gives one frame every N seconds. 1024px wide is plenty for slide text.
-    # -t enforces the hard stop inside ffmpeg itself, so it holds even if the
-    # caller crashes and never calls stop.
-    # avfoundation screen input hands over a pixel format the mjpeg encoder refuses
-    # ("Non full-range YUV is non-standard" -> ff_frame_thread_encoder_init failed,
-    # zero frames written). Pin the input format and convert to yuvj420p for JPEG.
-    # Fully detach. Left attached, this ffmpeg keeps the CALLER's shell alive until
-    # its own -t expires -- run-queue.sh does start/sleep/stop in one shell, so an
-    # attached child hangs the whole queue rather than the capture.
-    nohup ffmpeg -nostdin -loglevel error -y -f avfoundation -pixel_format uyvy422 \
-      -framerate 30 -i "$IDX:none" \
-      -t "$(( MAXMIN * 60 ))" \
-      -vf "fps=1/$IVL,scale=1024:-2,format=yuvj420p" -q:v 4 "$DIR/%05d.jpg" \
-      >"$DIR/.ffmpeg.log" 2>&1 </dev/null &
-    echo $! > "$DIR/.pid"
-    disown 2>/dev/null || true
-    # 3. Every session is logged, so screen capture is never silent or deniable.
-    echo "$(date '+%Y-%m-%d %H:%M:%S')  START  dir=$DIR interval=${IVL}s max=${MAXMIN}min pid=$!" >> "$AUDIT"
-    echo ">> slide capture started (1 frame / ${IVL}s, hard stop ${MAXMIN} min) -> $DIR"
-    echo ">> logged to $AUDIT"
+    mkdir -p "$ABS"
+    rm -f "$ABS/.pid"
+    open -n "$APP" --args "$ABS" "$IVL" "$MAXMIN"
+    for _ in $(seq 1 20); do [ -f "$ABS/.pid" ] && break; sleep 0.5; done
+    [ -f "$ABS/.pid" ] || { echo "!! ClassSlides did not start — see $AUDIT" >&2; exit 1; }
+    echo ">> slide capture: pick the Microsoft Teams meeting window in the system picker"
+    echo ">>   (minimise this terminal first — the picker takes the window under your click)"
+    echo ">> 1 frame / ${IVL}s, hard stop ${MAXMIN} min -> $ABS · audit: $AUDIT"
     ;;
 
   stop)
     DIR="${2:?usage: capture-slides.sh stop <frames-dir>}"
-    [ -f "$DIR/.pid" ] || { echo "error: no slide capture running in $DIR" >&2; exit 1; }
-    PID=$(cat "$DIR/.pid")
-    kill -INT "$PID" 2>/dev/null || true
-    # Wait for it to actually exit before deduping -- deduping while frames are still
-    # being written desyncs the thumbnail list from the files and deletes the wrong ones.
-    for _ in $(seq 1 20); do kill -0 "$PID" 2>/dev/null || break; sleep 0.5; done
-    if kill -0 "$PID" 2>/dev/null; then
-      echo "!! ffmpeg ignored SIGINT — forcing" >&2; kill -9 "$PID" 2>/dev/null; sleep 1
+    if [ -f "$DIR/.pid" ]; then
+      PID=$(cat "$DIR/.pid")
+      # Only signal the pid if it is still ClassSlides -- the app may have quit on its own
+      # (Teams window closed) and the pid been reused by something unrelated.
+      if ps -p "$PID" -o comm= 2>/dev/null | grep -q ClassSlides; then
+        kill -INT "$PID" 2>/dev/null || true
+        # Wait for it to exit before deduping -- deduping while frames are still being
+        # written desyncs the thumbnail list from the files and deletes the wrong ones.
+        for _ in $(seq 1 20); do kill -0 "$PID" 2>/dev/null || break; sleep 0.5; done
+        if kill -0 "$PID" 2>/dev/null; then
+          echo "!! ClassSlides ignored SIGINT — forcing" >&2; kill -9 "$PID" 2>/dev/null; sleep 1
+        fi
+      fi
+      rm -f "$DIR/.pid"
+    elif ! ls "$DIR"/*.jpg >/dev/null 2>&1; then
+      echo "error: no slide capture in $DIR" >&2; exit 1
     fi
-    rm -f "$DIR/.pid"
     BEFORE=$(ls "$DIR"/*.jpg 2>/dev/null | wc -l | tr -d ' ')
     if [ "$BEFORE" -eq 0 ]; then
-      echo "!! no frames captured. Check, in order:" >&2
-      echo "!!   1. Screen Recording permission for this terminal" >&2
-      echo "!!   2. the ffmpeg error in the queue log (encoder/pixel-format issues" >&2
-      echo "!!      also produce zero frames and look identical to a permission denial)" >&2
+      echo "!! no frames captured. Check the last lines of $AUDIT:" >&2
+      echo "!!   REFUSED   -> a non-Teams window was picked (minimise the terminal, pick Teams)" >&2
+      echo "!!   no window picked / picker cancelled -> nobody clicked Teams in time" >&2
+      echo "!!   capture failed -> the error text follows on that line" >&2
       exit 1
     fi
     python3 "$(dirname "$0")/dedup-frames.py" "$DIR"
     AFTER=$(ls "$DIR"/*.jpg 2>/dev/null | wc -l | tr -d ' ')
-    ROOT=$(python3 -c "import os;print(os.path.realpath(os.path.expanduser('~/class-notes')))")
-    echo "$(date '+%Y-%m-%d %H:%M:%S')  STOP   dir=$DIR kept=$AFTER of $BEFORE" >> "$ROOT/screen-capture-audit.log"
+    echo "$(date '+%Y-%m-%d %H:%M:%S')  DEDUP  dir=$DIR kept=$AFTER of $BEFORE" >> "$AUDIT"
     echo ">> slides: $AFTER kept of $BEFORE captured"
     ;;
 
-  *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

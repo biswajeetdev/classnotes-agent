@@ -60,10 +60,16 @@ It builds the device directly through CoreAudio; Audio MIDI Setup is not needed.
 must not contain "BlackHole" (there is a guard that refuses to record when the output
 device looks like the loopback, so you cannot sit through a silent class).
 
-**2. Screen Recording permission**, if you want slide capture:
-System Settings → Privacy & Security → Screen Recording → enable your terminal.
+**2. Build `ClassSlides.app`**, if you want slide capture:
 
-Without it, ffmpeg runs and writes **zero frames** with no error.
+```bash
+scripts/classslides/build.sh
+```
+
+Needs Xcode's Swift toolchain. It builds a sandboxed app (no network, writes only under
+`~/class-notes`) that captures **only the Microsoft Teams window you pick** in Apple's system
+window picker. **Do not grant Screen Recording permission** to your terminal: none is needed,
+and macOS scopes that permission to a whole app, never to one window.
 
 Verify before you rely on it:
 

@@ -252,8 +252,12 @@ Learned the hard way; all documented in [`docs/GOTCHAS.md`](docs/GOTCHAS.md).
   `live-notes.sh` now detects this and warns instead of concluding the class ended.
 - **launchd runs with a minimal `PATH`** that excludes Homebrew, so a scheduled capture
   dies on "whisper-cli missing" while the log says it started.
-- **Slide capture needs Screen Recording permission.** Without it ffmpeg runs happily and
-  writes zero frames — indistinguishable from a working capture until you look.
+- **Slide capture is Teams-window-only, and needs one click.** `capture-slides.sh` launches
+  `ClassSlides.app` (build it with `scripts/classslides/build.sh`), which uses Apple's system
+  window picker: pick the Teams meeting window and only that window is captured. It needs
+  **no** Screen Recording permission — don't grant one, since macOS scopes it to a whole app,
+  never a window. Minimise the terminal first: the picker takes the window under your click,
+  and a non-Teams pick is refused and logged to `screen-capture-audit.log`.
 
 ---
 
