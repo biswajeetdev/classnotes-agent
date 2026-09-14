@@ -7,7 +7,9 @@
 # Entitlements are the security boundary, enforced by the OS, not by this code:
 #   app-sandbox           : on
 #   network               : NONE (no network.client / network.server) -> cannot send anything
-#   files                 : read-write ONLY under ~/class-notes (home-relative exception)
+#   files                 : read-write ONLY under ~/class-notes/.frames (home-relative exception)
+#                           -- a staging folder; capture-slides.sh moves frames out of it, so a
+#                           compromised app cannot edit scripts that later run outside the sandbox
 #   hardened runtime      : on (no code injection / unsigned libraries)
 set -euo pipefail
 
@@ -38,7 +40,7 @@ cat > "$BUILD/ClassSlides.entitlements" <<'EOF'
 <plist version="1.0"><dict>
   <key>com.apple.security.app-sandbox</key><true/>
   <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
-  <array><string>/class-notes/</string></array>
+  <array><string>/class-notes/.frames/</string></array>
 </dict></plist>
 EOF
 

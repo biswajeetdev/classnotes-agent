@@ -10,8 +10,12 @@
 //   * Teams only. Picker is locked to single-window mode; any window not owned by
 //     Microsoft Teams is refused and the app quits. Only that window's pixels are
 //     captured — overlapping windows (terminal, chats) never appear in a frame.
-//   * App Sandbox, enforced by macOS: no network entitlement (cannot send anything),
-//     file writes only under ~/class-notes (see build.sh entitlements).
+//   * App Sandbox, enforced by macOS: no network entitlement (cannot send anything), and
+//     file access ONLY to ~/class-notes/.frames -- a staging folder. capture-slides.sh, not
+//     this app, moves finished frames into the course's slides folder, so the app can never
+//     touch scripts, notes or .env (see build.sh entitlements).
+//   * Meeting windows only: the main Teams window and popped-out chats (titles ending in
+//     "| Microsoft Teams") are refused too.
 //   * Hard stop, quit when the Teams window closes, every START/STOP/REFUSED line in
 //     ~/class-notes/screen-capture-audit.log.
 
@@ -27,7 +31,7 @@ func realHome() -> String { String(cString: getpwuid(getuid())!.pointee.pw_dir) 
 final class Capture: NSObject, NSApplicationDelegate, SCContentSharingPickerObserver,
                      SCStreamOutput, SCStreamDelegate {
   let outDir: URL, interval: Double, maxMinutes: Int
-  let root = URL(fileURLWithPath: realHome() + "/class-notes")
+  let root = URL(fileURLWithPath: realHome() + "/class-notes/.frames")  // the sandbox's only writable path
   var stream: SCStream?
   var frameNo = 0
   var lastWrite = Date.distantPast
@@ -104,6 +108,15 @@ final class Capture: NSObject, NSApplicationDelegate, SCContentSharingPickerObse
       finish("REFUSED non-Teams selection (\(who.isEmpty ? "not a single window" : who))")
       return
     }
+    // Teams, but not a meeting: the main window ("Chat | …", "Teams and Channels | Microsoft
+    // Teams", Calendar, Activity) and popped-out chats carry the "| Microsoft Teams" suffix and
+    // would capture private conversations. The meeting window is titled with the meeting name
+    // alone (observed 2026-09-14), so refuse the suffix and untitled windows.
+    let title = wins[0].title ?? ""
+    if title.isEmpty || title.hasSuffix("| Microsoft Teams") {
+      finish("REFUSED Teams window that is not a meeting (title=\"\(title)\")")
+      return
+    }
     let conf = SCStreamConfiguration()
     let scale = CGFloat(filter.pointPixelScale)
     let w = min(filter.contentRect.width * scale, 1600)
@@ -169,10 +182,10 @@ guard args.count >= 2 else {
   FileHandle.standardError.write("usage: ClassSlides <frames-dir> [interval-s] [max-min]\n".data(using: .utf8)!)
   exit(2)
 }
-let rootPath = URL(fileURLWithPath: realHome() + "/class-notes").resolvingSymlinksInPath().path + "/"
+let rootPath = URL(fileURLWithPath: realHome() + "/class-notes/.frames").resolvingSymlinksInPath().path + "/"
 let out = URL(fileURLWithPath: (args[1] as NSString).expandingTildeInPath).standardizedFileURL
 guard (out.resolvingSymlinksInPath().path + "/").hasPrefix(rootPath), !out.path.contains("/../") else {
-  FileHandle.standardError.write("error: refusing to capture outside ~/class-notes (\(out.path))\n".data(using: .utf8)!)
+  FileHandle.standardError.write("error: refusing to capture outside ~/class-notes/.frames (\(out.path))\n".data(using: .utf8)!)
   exit(1)
 }
 let interval = max(Double(args.count > 2 ? args[2] : "10") ?? 10, 2)
