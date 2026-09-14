@@ -9,8 +9,10 @@
 # transcribes, and checks coverage.
 #
 # REQUIREMENTS: blackhole-2ch installed AND rebooted. Nothing else may play sound.
-# Slide capture also needs Screen Recording permission for your terminal, and records
-# the WHOLE screen — keep the lecture full-screen. Set SLIDES_CAPTURE=0 to skip it.
+# Slide capture is OFF by default here. capture-slides.sh only captures a Microsoft Teams
+# window picked by hand in the system picker, and this queue replays recordings in Chrome,
+# unattended -- so it would always be refused. SLIDES_CAPTURE=1 only if a Teams window is
+# what plays the lecture and someone is there to pick it.
 # While this runs the Mac's output is BlackHole, so you will hear NOTHING. Runs in
 # real time -- a 2h lecture takes 2h to capture plus ~45 min to transcribe.
 #
@@ -80,15 +82,15 @@ while IFS=$'\t' read -r SLUG DATE MINS URL; do
   WAIT=$(python3 -c "import math;print(int(math.ceil($MINS*60/$RATE))+60)")
   say_log "RATE  $SLUG $DATE — playing at ${RATE}x, waiting $((WAIT/60)) min"
   "$ROOT/scripts/capture.sh" start "$RAW" >>"$LOG" 2>&1 || { say_log "FAIL  capture start"; FAILED=1; continue; }
-  # Slides carry formulas and frameworks the transcript never states. Optional:
-  # set SLIDES_CAPTURE=0 to skip, e.g. if Screen Recording permission is not granted.
-  if [ "${SLIDES_CAPTURE:-1}" = "1" ]; then
+  # Slides carry formulas and frameworks the transcript never states, but capture needs a
+  # hand-picked Teams window (see header), so it is opt-in: SLIDES_CAPTURE=1.
+  if [ "${SLIDES_CAPTURE:-0}" = "1" ]; then
     "$ROOT/scripts/capture-slides.sh" start "$SLIDES" "${SLIDE_INTERVAL:-10}" >>"$LOG" 2>&1 \
       || say_log "WARN  slide capture failed to start — continuing audio-only"
   fi
   sleep "$WAIT"
   "$ROOT/scripts/capture.sh" stop >>"$LOG" 2>&1
-  if [ "${SLIDES_CAPTURE:-1}" = "1" ] && [ -f "$SLIDES/.pid" ]; then
+  if [ "${SLIDES_CAPTURE:-0}" = "1" ] && [ -f "$SLIDES/.pid" ]; then
     "$ROOT/scripts/capture-slides.sh" stop "$SLIDES" >>"$LOG" 2>&1 || true
     NSLIDES=$(ls "$SLIDES"/slide-*.jpg 2>/dev/null | wc -l | tr -d ' ')
     say_log "SLIDE $SLUG $DATE — $NSLIDES distinct slides kept"

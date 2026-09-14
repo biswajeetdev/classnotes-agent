@@ -92,6 +92,15 @@ def cmd_run(args):
     print(f">> verify: {'CLEAN' if result.verified else 'FLAGGED -- unverified, see below'}")
     print(result.verify_output)
 
+    # Verification gates publishing: an unverified note stays on disk for fixing, but its
+    # questions/admin and its content must not reach QUESTIONS.md, ASSIGNMENTS.md or
+    # SYNTHESIS.md, where a fabricated figure would be read as fact at exam time.
+    if not result.verified:
+        print(f"\n>> stopped before publishing: {result.path} failed verification.")
+        print(">> fix every flagged item, re-check with `classnotes verify`, then run "
+              f"`classnotes synthesis {course.slug}`.")
+        sys.exit(1)
+
     notewriter.append_admin_and_questions(paths, course, date, result)
 
     print(">> rebuilding synthesis")

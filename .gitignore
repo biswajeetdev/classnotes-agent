@@ -67,6 +67,10 @@ __pycache__/
 *.bak-*
 *.disabled-*
 
+# ClassSlides build output -- built locally by scripts/classslides/build.sh, never committed
+scripts/classslides/ClassSlides.app/
+scripts/classslides/.build/
+
 # Python packaging
 *.egg-info/
 .pytest_cache/
