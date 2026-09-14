@@ -33,9 +33,12 @@ STATEDIR="$HOME/class-notes/.live"; mkdir -p "$STATEDIR"
 
 if [ "${1:-}" = "stop" ]; then
   slug="${2:?usage: live-notes.sh stop <course-slug>}"
+  case "$slug" in *[!a-z0-9-]*) echo "error: course slug may contain only a-z, 0-9 and '-'" >&2; exit 1 ;; esac
   pf="$STATEDIR/$slug.pid"
   [ -f "$pf" ] || { echo "error: nothing recording for $slug" >&2; exit 1; }
   pid=$(cat "$pf")
+  # Only ever signal a plain numeric pid read from our own state file.
+  case "$pid" in ''|*[!0-9]*) echo "error: $pf does not hold a pid — not killing anything" >&2; exit 1 ;; esac
   kill -INT "$pid" 2>/dev/null
   # The script finishes transcribing its last chunks before exiting, which can take
   # several minutes. Wait generously -- killing early loses that work.
@@ -45,19 +48,22 @@ if [ "${1:-}" = "stop" ]; then
     kill -9 "$pid" 2>/dev/null
   fi
   # these must happen whether it exited cleanly or was forced
-  if [ -f "$STATEDIR/$slug.ffpid" ]; then
-    kill -9 "$(cat "$STATEDIR/$slug.ffpid")" 2>/dev/null && echo ">> stopped the recorder"
-  fi
-  if [ -f "$STATEDIR/$slug.gain" ]; then
-    osascript -e "set volume input volume $(cat "$STATEDIR/$slug.gain")" 2>/dev/null \
-      && echo ">> mic gain restored to $(cat "$STATEDIR/$slug.gain")"
-  fi
+  ffpid=$(cat "$STATEDIR/$slug.ffpid" 2>/dev/null || true)
+  case "$ffpid" in ''|*[!0-9]*) ;; *) kill -9 "$ffpid" 2>/dev/null && echo ">> stopped the recorder" ;; esac
+  # The saved gain goes into AppleScript: accept only a whole number 0-100.
+  gain=$(cat "$STATEDIR/$slug.gain" 2>/dev/null || true)
+  case "$gain" in
+    ''|*[!0-9]*) ;;
+    *) [ "$gain" -le 100 ] && osascript -e "set volume input volume $gain" 2>/dev/null \
+         && echo ">> mic gain restored to $gain" ;;
+  esac
   rm -f "$pf" "$STATEDIR/$slug.ffpid" "$STATEDIR/$slug.gain"
   echo ">> stopped $slug"
   exit 0
 fi
 
 SLUG="${1:?usage: live-notes.sh <course-slug> [date]  |  live-notes.sh stop <course-slug>}"
+case "$SLUG" in *[!a-z0-9-]*) echo "error: course slug may contain only a-z, 0-9 and '-'" >&2; exit 1 ;; esac
 DATE="${2:-$(date +%Y-%m-%d)}"
 ROOT="$HOME/class-notes"
 CHUNK_MIN="${CHUNK_MINUTES:-5}"
@@ -77,6 +83,9 @@ if [ "${MIC_MODE:-0}" = "1" ]; then
   [ -n "$IDX" ] || { echo "error: no built-in microphone found" >&2; exit 1; }
   # macOS defaults input gain to 100, which CLIPPED the whole 22 Aug lecture
   # (max_volume 0.0 dB). Clipped speech garbles words and whisper guesses.
+  # MIC_GAIN goes into AppleScript: accept only a whole number 0-100.
+  case "${MIC_GAIN:-38}" in ''|*[!0-9]*) echo "error: MIC_GAIN must be a whole number 0-100" >&2; exit 1 ;; esac
+  [ "${MIC_GAIN:-38}" -le 100 ] || { echo "error: MIC_GAIN must be a whole number 0-100" >&2; exit 1; }
   OLDGAIN=$(osascript -e 'input volume of (get volume settings)' 2>/dev/null || echo "")
   [ -n "$OLDGAIN" ] && echo "$OLDGAIN" > "$STATEDIR/$SLUG.gain"
   osascript -e "set volume input volume ${MIC_GAIN:-38}" 2>/dev/null

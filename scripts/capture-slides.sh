@@ -93,6 +93,13 @@ case "${1:-}" in
 
   stop)
     DIR="${2:?usage: capture-slides.sh stop <frames-dir>}"
+    # Same confinement as start: dedup-frames.py DELETES jpgs in whatever dir it is given.
+    DIR=$(python3 -c "import os,sys;print(os.path.realpath(os.path.expanduser(sys.argv[1])))" "$DIR")
+    case "$DIR/" in
+      "$FRAMES"/*) echo "error: <frames-dir> must be a course folder, not inside .frames" >&2; exit 1 ;;
+      "$ROOT"/?*) ;;
+      *) echo "error: refusing to stop/dedup outside ~/class-notes (asked for $DIR)" >&2; exit 1 ;;
+    esac
     prepare_frames
     if [ -f "$DIR/.pid" ]; then
       PID=$(cat "$DIR/.pid")
