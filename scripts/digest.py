@@ -67,7 +67,24 @@ def call(chunk, key, model):
                  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"})
     with urllib.request.urlopen(req, timeout=180) as r:
-        return json.loads(r.read())["choices"][0]["message"]["content"]
+        choice = json.loads(r.read())["choices"][0]
+    msg = choice.get("message") or {}
+    text = (msg.get("content") or "").strip()
+
+    # A reply that is empty or cut off must NOT be accepted as a part. This is the
+    # failure that silently destroyed two SYNTHESIS.md files: a reasoning model
+    # spends its budget on hidden reasoning, returns content == "", and the caller
+    # cheerfully appended nothing and reported "ok". Raise instead, so the retry
+    # loop sees it and the run fails loudly rather than writing a gutted digest.
+    if not text:
+        hint = " (model returned reasoning but no content -- use a non-reasoning model)" \
+            if msg.get("reasoning") else ""
+        raise RuntimeError(f"empty reply from {model}{hint}")
+    if choice.get("finish_reason") == "length":
+        raise RuntimeError(
+            f"reply from {model} was truncated at max_completion_tokens -- "
+            "lower DIGEST_CHUNK_WORDS so each part fits")
+    return text
 
 def main():
     load_env()
@@ -75,7 +92,10 @@ def main():
     if not key:
         print("error: GROQ_API_KEY not set. Put it in ~/class-notes/.env", file=sys.stderr)
         return 2
-    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")  # llama-3.3 is decommissioned
+    # NOT a reasoning model. gpt-oss-120b spends its token budget on hidden reasoning
+    # and can return empty content, which is what gutted two SYNTHESIS.md files.
+    # qwen3.8-27b is fast, multilingual, and answers directly. (llama-3.3 is decommissioned.)
+    model = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
     src = sys.argv[1]
     dst = sys.argv[2] if len(sys.argv) > 2 else src.replace(".txt", "-digest.md")
     text = open(src, encoding="utf-8").read()
