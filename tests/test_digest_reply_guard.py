@@ -13,7 +13,6 @@ import io
 import json
 
 import pytest
-
 from conftest import import_script
 
 digest = import_script("digest.py")
