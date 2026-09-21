@@ -21,16 +21,46 @@ Two things this pipeline cannot currently do:
 It is batch, not streaming, which suits this pipeline — transcription already happens after
 the fact, in chunks.
 
-**MLX Whisper** (Apple Silicon) — several small wrappers exist around it. On an M-series Mac
-it is meaningfully faster than the current `whisper-cli` path for batch work. Worth measuring
-before adopting; the current pipeline is not latency-bound, so this is a convenience, not a fix.
+**Wired up as `scripts/diarize.py`, but NOT verified end to end.** whisperX pulls torch and
+pyannote (multiple GB) and its diarization models are gated on Hugging Face, so the first real
+run is the test. The script is deliberately separate from `transcribe.sh` and fails with
+setup instructions rather than a traceback, so the main pipeline keeps working on a machine
+where none of it is installed.
 
-## Worth building, not adopting
+## Considered and declined — MLX Whisper
 
-**Anki export.** The survey turned up a dozen AI-to-Anki generators, none above 30 stars and
-none worth a dependency. But the idea fits: this pipeline already produces quiz questions, a
-Bloom blueprint and mock papers. Emitting those as an Anki deck or a plain CSV is a small
-amount of code and turns one-off revision material into spaced repetition.
+Looked promising: an Apple-Silicon-native Whisper, on a machine that is an M1.
+
+It resolves to **torch 2.14 plus mlx, mlx-metal, numba, scipy and llvmlite** — about 2 GB.
+So it is not the light alternative to whisper.cpp that it first appears to be; it carries the
+same dependency weight as whisperX, for a speedup rather than a capability.
+
+Against that: whisper.cpp already runs on Metal here, and this pipeline is **not
+latency-bound**. Lectures are transcribed after the fact, in chunks, while nobody is waiting.
+A faster batch transcriber buys very little, and 2 GB of dependencies is a real cost on a
+tool whose selling point is that it runs locally with `brew install whisper-cpp`.
+
+**Not benchmarked.** The install was abandoned partway rather than pull 2 GB to measure a
+speedup that would not change the recommendation. Worth revisiting only if transcription ever
+becomes the slow step — it currently is not.
+
+## Built, not adopted
+
+**Anki export — done, `scripts/make-anki.py`.** The survey turned up a dozen AI-to-Anki
+generators, none above 30 stars and none worth a dependency. The idea fits, so it is built
+here instead: a synthesis already contains a concept index and a ranked list of likely exam
+questions, which are exactly two card decks waiting to be emitted.
+
+Output is TSV rather than `.apkg` — inspectable in an editor, diffable in git, and
+re-importable over the same deck without duplicating cards. Zero dependencies.
+
+Across the six live courses it produces **299 cards** (215 concept, 84 exam).
+
+One bug found while testing it, worth recording because it was silent: the notes number exam
+questions two ways, `**1. Question**` and `1. **Question**`, and the first parser knew only
+the first form. Five of six courses produced **zero** exam cards and reported success, which
+is indistinguishable from a synthesis that simply has no questions in it. Both forms now
+parse, and a test covers each.
 
 ## Not adopted
 

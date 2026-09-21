@@ -146,6 +146,24 @@ verifies it against the transcript, and rebuilds `SYNTHESIS.md`.
 /classnotes what did I miss
 ```
 
+**Turn a synthesis into flashcards:**
+
+```bash
+scripts/make-anki.py "$CLASSNOTES_ROOT/<course>"      # -> <course>-anki.tsv
+```
+
+Cards come from the concept index (term → one-line gloss → which lecture) and from the
+likely-exam-questions section. Import into Anki with File → Import; the file carries the
+separator and HTML directives, so the dialog needs no fiddling. Every card is tagged with
+the course and with `concept` or `exam`, so one deck holds every course and still filters.
+Re-running overwrites the same TSV, and re-importing updates rather than duplicating.
+
+**Label who is speaking** (optional, needs whisperX and a Hugging Face token):
+
+```bash
+scripts/diarize.py lecture.wav --speakers 2
+```
+
 ---
 
 ## Two ways to run this
@@ -230,6 +248,8 @@ LESSONS.md, courses.yaml) still come from the real `$CLASSNOTES_ROOT`.
 | `verify-notes.py` | checks every figure, quote and name in a note against the transcript |
 | `extract-signals.py` | greps for assessment language and repetition — deterministic, never invents |
 | `digest.py` | optional Groq pass to summarise very long transcripts |
+| `make-anki.py` | `SYNTHESIS.md` → an Anki deck (TSV), from the concept index and exam questions |
+| `diarize.py` | optional whisperX pass that labels who is speaking — lecturer vs student |
 | `term-coverage.py` | which scheduled sessions have no transcript |
 | `capture-slides.sh` / `dedup-frames.py` | screen frames, deduplicated to distinct board states |
 | `fetch-slides.sh` | opens Moodle in your existing Chrome session; files what you download |
