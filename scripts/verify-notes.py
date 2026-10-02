@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Check a lecture note against its transcript. Flags anything not grounded in it.
 
-    verify-notes.py <lecture.md> <transcript.txt>
+    verify-notes.py <lecture.md> <transcript.txt> [more transcripts...]
+
+Transcripts named on the note's own **Source:** line are added automatically.
 
 The LLM pass reconstructs garbled terms and infers structure, which is necessary -- but
 it is also exactly where fabrication would enter. A wrong figure discovered in November
@@ -14,7 +16,7 @@ is worse than a gap. This checks the claims that are cheap to check mechanically
 It cannot judge reasoning, and it is not meant to. It catches invented specifics.
 Reconstructions the note declares under "Transcription notes" are exempt.
 """
-import difflib, re, sys, unicodedata
+import difflib, os, re, sys, unicodedata
 
 def norm(t):
     """Normalise both sides so notation differences are not mistaken for fabrication.
@@ -37,9 +39,32 @@ def num_variants(n):
     if "." in d: out.add(d.split(".")[0])
     return {re.sub(r"\s+", " ", v).strip() for v in out}
 
+def sources(note_path, note, extra):
+    """Transcripts to check against: the ones on the command line, plus every file the
+    note's own **Source:** line names. A note built from a cleaned or re-run transcript
+    (`2026-09-12.mc0.txt`) or from a recovered tail chunk was being checked against the
+    wrong text, and every quote in it flagged -- 25 false alarms on one note."""
+    paths = list(extra)
+    m = re.search(r"\*\*Source:?\*\*:?\s*([^\n]+)", note)
+    if m:
+        course = os.path.dirname(os.path.dirname(os.path.abspath(note_path)))
+        for rel in re.findall(r"transcripts/[\w.\-]+\.txt", m.group(1)):
+            p = os.path.join(course, rel)
+            if os.path.isfile(p) and p not in paths:
+                paths.append(p)
+    return paths
+
+def section(note, title):
+    m = re.search(rf"\n## {title}[^\n]*\n(.*?)(?=\n## |\Z)", note, re.S)
+    return m.group(1) if m else ""
+
+# Pipeline vocabulary, not claims about the lecture.
+META = {"Groq", "LESSONS", "SYNTHESIS", "QUESTIONS", "ASSIGNMENTS", "Whisper"}
+
 def main():
     note = open(sys.argv[1], encoding="utf-8").read()
-    tr   = open(sys.argv[2], encoding="utf-8").read()
+    tr   = "\n".join(open(p, encoding="utf-8").read()
+                     for p in sources(sys.argv[1], note, sys.argv[2:]))
     tnorm, tflat = norm(tr), norm(tr).replace(" ", "")
     twords = set(tnorm.split())
 
@@ -48,13 +73,24 @@ def main():
     m = re.search(r"## Transcription notes(.*?)(\n## |\Z)", note, re.S)
     if m: exempt = norm(m.group(1))
 
-    body = re.sub(r"## Transcription notes.*?(\n## |\Z)", "", note, flags=re.S)
+    body = re.sub(r"## Transcription notes.*?(?=\n## |\Z)", "", note, flags=re.S)
     # the header block is metadata (dates, durations, file paths) -- not claims
     body = re.sub(r"\A.*?(?=\n## )", "", body, flags=re.S)
     issues = []
 
     # --- numbers -------------------------------------------------------------
-    for raw in set(re.findall(r"(?<![\w/-])(\d[\d,]*\.?\d*)(?![\w/-])", body)):
+    # Exempt TOKENS, never whole lines: a fabricated figure must not be able to hide
+    # behind a slide tag. What is removed is only the bookkeeping number itself --
+    # the N in "[from slide N]", frame ids, review dates, self-test scenarios -- and
+    # figures inside a 🤖 callout, which the note already declares as not-from-class.
+    nbody = re.sub(r"\[[^\]\n]*\bslides?[- ][\d,–\- ]+[^\]\n]*\]", " ", body, flags=re.I)
+    nbody = re.sub(r"\bslides?[- ]\d+(?:\s*[,–-]\s*\d+)*", " ", nbody, flags=re.I)
+    nbody = re.sub(r"\bD\+\d+\b", " ", nbody)
+    nbody = "\n".join(l for l in nbody.split("\n") if "🤖" not in l)
+    for title in ("Frame coverage", "Review schedule", "Self-test"):
+        sec = section(nbody, title)
+        if sec: nbody = nbody.replace(sec, "")
+    for raw in set(re.findall(r"(?<![\w/-])(\d[\d,]*\.?\d*)(?![\w/-])", nbody)):
         if len(raw.replace(",", "").replace(".", "")) < 2:   # skip 1-digit noise
             continue
         if any(v in tnorm or v.replace(",", "") in tflat for v in num_variants(raw)):
@@ -90,7 +126,7 @@ def main():
             english = {w.strip().lower() for w in open(dic, encoding="utf-8", errors="ignore")}
         except OSError:
             pass
-    stop = {"Date","Source","Course","Professor","Given","Due","Weight","Status"}
+    stop = {"Date","Source","Course","Professor","Given","Due","Weight","Status"} | META
     # A capitalised word at the start of a line, heading, bullet or table cell is
     # just sentence case, not a claim. Only mid-sentence capitals are proper nouns.
     #
