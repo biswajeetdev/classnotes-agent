@@ -68,3 +68,11 @@ def test_reasoning_effort_only_sent_to_reasoning_models(monkeypatch):
     mod.call("chunk", "key", "llama-3.1-8b-instant")
     assert seen[0].get("reasoning_effort") == "low"
     assert "reasoning_effort" not in seen[1]
+
+
+def test_default_qwen_model_gets_no_reasoning_effort(monkeypatch):
+    mod = _load()
+    seen = []
+    monkeypatch.setattr(mod.urllib.request, "urlopen", _fake_urlopen("ok", "stop", seen))
+    mod.call("chunk", "key", "qwen/qwen3.8-27b")
+    assert "reasoning_effort" not in seen[0]

@@ -53,7 +53,9 @@ Any task, deadline, schedule change, or material promised. Quote the exact instr
 """
 
 def is_reasoning_model(model):
-    return "gpt-oss" in model or "qwen" in model
+    # Only gpt-oss-* reason before answering. The default qwen model answers directly, and
+    # non-reasoning models reject the reasoning_effort field.
+    return "gpt-oss" in model
 
 
 def call(chunk, key, model):
@@ -82,14 +84,16 @@ def call(chunk, key, model):
     with urllib.request.urlopen(req, timeout=180) as r:
         payload = json.loads(r.read())
     choice = payload["choices"][0]
-    content = (choice["message"].get("content") or "").strip()
+    msg = choice.get("message") or {}
+    content = (msg.get("content") or "").strip()
     # NEVER return an empty or truncated digest silently. A digest that looks like a
     # short file is indistinguishable from a good one until exam time, by which point
     # the transcript context is gone. Fail loudly instead.
     if not content:
+        hint = (" The model returned reasoning but no content: raise max_completion_tokens "
+                "or use a non-reasoning model.") if msg.get("reasoning") else ""
         raise RuntimeError(
-            f"empty content from {model} (finish_reason={choice.get('finish_reason')}). "
-            "The model spent its budget on reasoning. Raise max_completion_tokens.")
+            f"empty reply from {model}: empty content (finish_reason={choice.get('finish_reason')}).{hint}")
     if choice.get("finish_reason") == "length":
         raise RuntimeError(
             f"truncated content from {model} (finish_reason=length). "
@@ -102,7 +106,10 @@ def main():
     if not key:
         print("error: GROQ_API_KEY not set. Put it in ~/class-notes/.env", file=sys.stderr)
         return 2
-    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")  # llama-3.3 is decommissioned
+    # NOT a reasoning model. gpt-oss-120b spends its token budget on hidden reasoning
+    # and can return empty content, which is what gutted two SYNTHESIS.md files.
+    # qwen3.8-27b is fast, multilingual, and answers directly. (llama-3.3 is decommissioned.)
+    model = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
     src = sys.argv[1]
     dst = sys.argv[2] if len(sys.argv) > 2 else src.replace(".txt", "-digest.md")
     text = open(src, encoding="utf-8").read()
