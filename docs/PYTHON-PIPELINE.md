@@ -215,10 +215,15 @@ What happens, in order:
 5. A note is written to
    `$CLASSNOTES_ROOT/intro-statistics/lectures/2026-09-08-<topic-slug>.md`.
 6. The note is verified against the full transcript. Anything unverifiable — an
-   ungrounded quote, a number with no source — is either fixed automatically where the
-   fix is unambiguous, or flagged for you [contract: exact automatic-fix vs.
-   flag-only behaviour not yet confirmed].
-7. `$CLASSNOTES_ROOT/intro-statistics/SYNTHESIS.md` is rebuilt from every note in
+   ungrounded quote, a number with no source — is **flagged, never auto-repaired**: an
+   LLM asked to fix a flagged quote usually just drops the quotation marks, which is the
+   dodge the verification rules forbid. A flagged note is still written to disk so you
+   can fix it, but `run` **stops here with exit code 1** — nothing is appended to
+   `QUESTIONS.md` or `ASSIGNMENTS.md` and `SYNTHESIS.md` is not rebuilt. Fix the flagged
+   items, re-check with `classnotes verify`, then run `classnotes synthesis`.
+7. Only for a clean note: its open questions and admin items are appended to
+   `QUESTIONS.md` / `ASSIGNMENTS.md`, and
+   `$CLASSNOTES_ROOT/intro-statistics/SYNTHESIS.md` is rebuilt from every note in
    `intro-statistics/lectures/`, including the new one.
 
 To re-run just the parts that touch judgement, once the transcript already exists:
@@ -283,11 +288,14 @@ properties of whisper and of LLM summarisation, not of having an agent in the lo
 
 ## Limitations and known-broken
 
-- **Slide capture needs macOS Screen Recording permission**, granted to whatever
-  terminal or process runs it. Without it, ffmpeg runs cleanly, exits 0, and writes
-  zero frames — indistinguishable from a working capture unless you count the files.
-  This is a property of the capture scripts the pipeline calls, not something the
-  Python mode changes.
+- **Slide capture needs one click per class.** `capture-slides.sh` launches
+  `ClassSlides.app`, which captures only the Microsoft Teams window you pick in Apple's
+  system window picker — no Screen Recording permission is needed, and none should be
+  granted (macOS scopes that permission to a whole app, never one window). If nobody
+  picks the Teams window, or a different window is picked, zero frames are written and
+  the reason is in `screen-capture-audit.log`. Build the app once with
+  `scripts/classslides/build.sh`. This is a property of the capture scripts the pipeline
+  calls, not something the Python mode changes.
 - **Groq's free tier is 8,000 tokens/minute.** The digest stage paces itself against
   this rather than erroring — expect roughly 3 minutes of digesting for a 90-minute
   lecture's transcript. This is a fixed cost of the mode, not a bug; if you need it
@@ -309,7 +317,7 @@ properties of whisper and of LLM summarisation, not of having an agent in the lo
 | Digest stage hangs or is very slow | Groq free-tier rate limiting (8,000 tokens/min) doing its job | Expected for long transcripts; let it finish rather than re-running |
 | `note` produces a ⚡ section that looks thin | Extraction is deliberately conservative — it only matches known signal patterns | Check `extract-signals.py`'s raw output directly; a real signal phrased unusually won't be caught, and that's a case for the agent-driven mode instead |
 | `verify` keeps flagging the same item after a fix | The note still doesn't match the transcript's actual wording, not a false positive | Reread the transcript at that point rather than rephrasing around the checker |
-| Slide frames are missing or zero | Screen Recording permission not granted | Grant it in System Settings → Privacy & Security → Screen Recording, then re-run the capture, not just the note stage |
+| Slide frames are missing or zero | The Teams window was never picked, a non-Teams window was picked (`REFUSED` in `screen-capture-audit.log`), or `ClassSlides.app` was not built | Minimise the terminal so Teams is uncovered, pick the Teams meeting window when the picker appears, and run `scripts/classslides/build.sh` if the app is missing. Do **not** grant Screen Recording to fix this |
 | `GROQ_API_KEY` errors that look like a bad key | Groq's Cloudflare layer rejecting a bare/default `User-Agent`, not the key itself (a known interaction, documented in `scripts/digest.py`) | Confirm the key is valid at console.groq.com before assuming it's wrong |
 
 ---

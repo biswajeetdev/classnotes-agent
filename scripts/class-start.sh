@@ -25,8 +25,9 @@
 # This script sets output to that device on start and restores your speakers on stop,
 # so you never touch Audio MIDI Setup again.
 #
-# Also required once: Screen Recording permission for your terminal
-#   System Settings > Privacy & Security > Screen Recording > enable Terminal/iTerm.
+# Slides need NO Screen Recording permission -- do not grant it to Terminal. capture-slides.sh
+# launches ClassSlides.app: at start, pick the Microsoft Teams meeting window in the system
+# picker (minimise this terminal first). Audio needs only Microphone permission (BlackHole).
 
 set -uo pipefail
 ROOT="$HOME/class-notes"

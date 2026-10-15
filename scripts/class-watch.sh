@@ -70,6 +70,11 @@ PY
 # recording; a recording you did not consent to is not undoable.
 ask_permission() {
   local slug="$1" slot="$2"
+  # All three are spliced into an AppleScript dialog. Anything unexpected is treated as
+  # "no answer" (return 2), which never starts a recording.
+  case "$slug" in ''|*[!a-z0-9-]*) return 2 ;; esac
+  case "$slot" in [0-9][0-9][0-9][0-9]) ;; *) return 2 ;; esac
+  case "${ASK_TIMEOUT:-240}" in ''|*[!0-9]*) return 2 ;; esac
   [ "${CLASSWATCH_ASK:-1}" = "0" ] && return 0
   local pretty="${slot:0:2}:${slot:2:2}"
   local answer

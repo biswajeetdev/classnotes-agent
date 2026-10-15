@@ -19,6 +19,15 @@ set -uo pipefail
 RATE="${1:?usage: set-playback-rate.sh <rate> [url-substring]}"
 MATCH="${2:-sharepoint.com}"
 
+# Both values are spliced into AppleScript, and RATE into JavaScript that runs inside a
+# signed-in SharePoint tab. Accept only a plain decimal and a plain host-like substring.
+case "$RATE" in
+  ''|*[!0-9.]*|*.*.*|.*|*.) echo "1.0"; echo "!! rate must be a plain number like 1.5" >&2; exit 1 ;;
+esac
+case "$MATCH" in
+  ''|*[!A-Za-z0-9.-]*) echo "1.0"; echo "!! url-substring may contain only letters, digits, '.' and '-'" >&2; exit 1 ;;
+esac
+
 OUT=$(osascript <<APPLESCRIPT 2>&1
 tell application "Google Chrome"
   repeat with w in windows

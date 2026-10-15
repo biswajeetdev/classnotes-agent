@@ -47,8 +47,11 @@ It records the professor's **audio** via BlackHole (`live-notes.sh`) and the sha
 **screen** as deduped slide frames (`capture-slides.sh`) together. Audio is the master:
 when it auto-stops after ~15 min of silence, slides stop and your speaker output is
 restored automatically. Requires the one-time **Multi-Output Device** (see the header
-of `class-start.sh`) and Screen Recording permission for the terminal. When it finishes,
-the transcript and `slides/<date>/` are in place — carry on from step 1.
+of `class-start.sh`) and a built `ClassSlides.app` (`scripts/classslides/build.sh`). At start,
+Apple's window picker appears: minimise the terminal and pick the **Teams meeting window** —
+only that window is captured. **Never grant Screen Recording permission** to make capture work;
+none is needed. When it finishes, the transcript and `slides/<date>/` are in place — carry on
+from step 1.
 
 ### 1. Work out the course and date
 
